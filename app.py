@@ -378,7 +378,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
 def inicializar_session_state():
     """Inicializa as variáveis de session state"""
     if 'min_score' not in st.session_state:
-        st.session_state.min_score = 0.5
+        st.session_state.min_score = 0.6
     if 'use_gemini' not in st.session_state:
         st.session_state.use_gemini = True
     if 'modelo' not in st.session_state:
@@ -386,7 +386,7 @@ def inicializar_session_state():
     if 'api_key' not in st.session_state:
         st.session_state.api_key = ""
     if 'temperatura' not in st.session_state:
-        st.session_state.temperatura = 0.1
+        st.session_state.temperatura = 0.0
     if 'mostrar_codigo' not in st.session_state:
         st.session_state.mostrar_codigo = False
 
