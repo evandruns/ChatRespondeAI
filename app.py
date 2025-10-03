@@ -115,7 +115,7 @@ def get_headers_with_random_ua():
     headers['User-Agent'] = random.choice(USER_AGENTS)
     return headers
 
-def pesquisar_interna_totvs(query: str, limit: int = 8) -> List[str]:
+def pesquisar_interna_totvs(query: str, limit: int = 5) -> List[str]:
     base = "https://centraldeatendimento.totvs.com"
     search_url = f"{base}/hc/pt-br/search?query={urllib.parse.quote(query)}"
     
@@ -153,8 +153,8 @@ def pesquisar_interna_totvs(query: str, limit: int = 8) -> List[str]:
         
     return links
 
-def buscar_documentacao_totvs(query: str, max_links: int = 8) -> List[str]:
-    """Busca links na documentação TOTVS - aumentado para 8 links para ter mais opções"""
+def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
+    """Busca links na documentação TOTVS - aumentado para 5 links para ter mais opções"""
     cleaned = clean_query(query) or query
     if "Protheus" not in cleaned.lower():
         search_query = f"site:centraldeatendimento.totvs.com Protheus {cleaned}"
@@ -445,7 +445,7 @@ def get_gemini_response(query: str, context: str, fontes: List[str], model: str,
         # Configurar generation config com temperatura
         generation_config = {
             "temperature": temperatura,
-            "top_p": 0.8,
+            "top_p": 0.0,
             "top_k": 40,
             "max_output_tokens": 512,
         }
