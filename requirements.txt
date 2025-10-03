@@ -7,3 +7,4 @@ cloudscraper>=1.2.71
 lxml>=4.9.0
 openai>=1.0.0
 google-generativeai>=0.3.0
+pyperclip>=1.8.2
