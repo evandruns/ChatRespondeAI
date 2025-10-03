@@ -16,7 +16,7 @@ import pyperclip
 # Configuração Inicial
 # ---------------------------
 st.set_page_config(
-    page_title="Responde AI TOTVS",
+    page_title="Assistente de Suporte TOTVS",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -262,7 +262,7 @@ def pontuar_relevancia(texto: str, query: str) -> float:
         return 0.0
     return len(tokens_query & tokens_texto) / len(tokens_query)
 
-def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, use_gemini: bool, api_key: str):
+def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, use_gemini: bool, api_key: str, temperatura: float):
     """Função unificada que escolhe entre Gemini e ChatGPT"""
     
     # Filtrar contexto removendo mensagens de erro
@@ -273,15 +273,27 @@ def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, us
         return "Não encontrei essa informação na documentação oficial devido a restrições de acesso."
 
     if use_gemini:
-        return get_gemini_response(query, context, fontes, modelo, api_key)
+        return get_gemini_response(query, context, fontes, modelo, api_key, temperatura)
     else:
-        return get_chatgpt_response(query, context, fontes, modelo, api_key)
+        return get_chatgpt_response(query, context, fontes, modelo, api_key, temperatura)
 
-def get_gemini_response(query: str, context: str, fontes: List[str], model: str, api_key: str):
+def get_gemini_response(query: str, context: str, fontes: List[str], model: str, api_key: str, temperatura: float):
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
-        gemini_model = genai.GenerativeModel(model_name=model)
+        
+        # Configurar generation config com temperatura
+        generation_config = {
+            "temperature": temperatura,
+            "top_p": 0.8,
+            "top_k": 40,
+            "max_output_tokens": 512,
+        }
+        
+        gemini_model = genai.GenerativeModel(
+            model_name=model,
+            generation_config=generation_config
+        )
         
         system_prompt = (
             "Você é um analista de suporte especializado no ERP Protheus da TOTVS.\n"
@@ -303,7 +315,7 @@ def get_gemini_response(query: str, context: str, fontes: List[str], model: str,
     except Exception as e:
         return f"Erro ao gerar resposta com Gemini: {e}"
 
-def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str, api_key: str):
+def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str, api_key: str, temperatura: float):
     try:
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
@@ -324,14 +336,49 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_content},
             ],
-            temperature=0.0,
+            temperature=temperatura,
             max_tokens=512,
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
         return f"Erro ao gerar resposta com OpenAI: {e}"
 
-# ... (o restante do código da interface permanece igual) ...
+# ---------------------------
+# Interface Streamlit
+# ---------------------------
+def inicializar_session_state():
+    """Inicializa as variáveis de session state"""
+    if 'min_score' not in st.session_state:
+        st.session_state.min_score = 0.5
+    if 'use_gemini' not in st.session_state:
+        st.session_state.use_gemini = True
+    if 'modelo' not in st.session_state:
+        st.session_state.modelo = "gemini-1.5-flash"
+    if 'api_key' not in st.session_state:
+        st.session_state.api_key = ""
+    if 'temperatura' not in st.session_state:
+        st.session_state.temperatura = 0.1
+
+def atualizar_lista_modelos():
+    """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
+    if st.session_state.use_gemini:
+        modelos_disponiveis = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+        if not st.session_state.modelo.startswith("gemini"):
+            st.session_state.modelo = "gemini-1.5-flash"
+    else:
+        modelos_disponiveis = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+        if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
+            st.session_state.modelo = "gpt-4o-mini"
+    return modelos_disponiveis
+
+def copiar_para_area_transferencia(texto: str):
+    """Copia texto para área de transferência"""
+    try:
+        pyperclip.copy(texto)
+        return True
+    except Exception as e:
+        st.error(f"Erro ao copiar: {e}")
+        return False
 
 def processar_pergunta(user_query: str):
     """Processa a pergunta do usuário e retorna a resposta"""
@@ -380,7 +427,8 @@ def processar_pergunta(user_query: str):
                     links, 
                     st.session_state.modelo,
                     st.session_state.use_gemini,
-                    st.session_state.api_key
+                    st.session_state.api_key,
+                    st.session_state.temperatura
                 )
             else:
                 resposta_final = get_ai_response(
@@ -389,7 +437,8 @@ def processar_pergunta(user_query: str):
                     links, 
                     st.session_state.modelo,
                     st.session_state.use_gemini,
-                    st.session_state.api_key
+                    st.session_state.api_key,
+                    st.session_state.temperatura
                 )
             
             status.update(label="Processamento completo!", state="complete")
@@ -419,7 +468,7 @@ def main():
         
         # Configurações
         st.session_state.min_score = st.slider(
-            "Score Mínimo de Relevância",
+            "🎯 Score Mínimo de Relevância",
             min_value=0.0,
             max_value=1.0,
             value=st.session_state.min_score,
@@ -427,19 +476,52 @@ def main():
             help="Quanto maior o score, mais relevante precisa ser o conteúdo"
         )
         
+        st.session_state.temperatura = st.slider(
+            "🌡️ Temperatura da IA",
+            min_value=0.0,
+            max_value=1.0,
+            value=st.session_state.temperatura,
+            step=0.1,
+            help="Valores mais baixos = respostas mais focadas e determinísticas\nValores mais altos = respostas mais criativas e variadas"
+        )
+        
+        # Explicação da temperatura
+        with st.expander("💡 Sobre a Temperatura"):
+            st.markdown("""
+            **Como a temperatura afeta as respostas:**
+            
+            - **0.0 - 0.3**: Respostas muito focadas e consistentes
+            - **0.4 - 0.7**: Equilíbrio entre criatividade e precisão  
+            - **0.8 - 1.0**: Respostas mais criativas e variadas
+            
+            *Recomendado: 0.1-0.3 para suporte técnico*
+            """)
+        
         st.session_state.modelo = st.selectbox(
-            "Modelo de IA",
+            "🤖 Modelo de IA",
             options=modelos_disponiveis,
             index=modelos_disponiveis.index(st.session_state.modelo) if st.session_state.modelo in modelos_disponiveis else 0
         )
         
         st.session_state.api_key = st.text_input(
-            "Chave da API",
+            "🔑 Chave da API",
             value=st.session_state.api_key,
             type="password",
             placeholder="Cole sua chave da API aqui",
             help="Obtenha sua chave em: https://aistudio.google.com/ (Gemini) ou https://platform.openai.com/ (OpenAI)"
         )
+        
+        # Indicador visual da temperatura
+        col_temp1, col_temp2, col_temp3 = st.columns(3)
+        with col_temp1:
+            if st.session_state.temperatura <= 0.3:
+                st.metric("Estilo", "Preciso", delta="Focado")
+        with col_temp2:
+            if 0.4 <= st.session_state.temperatura <= 0.7:
+                st.metric("Estilo", "Balanceado", delta="Equilibrado")
+        with col_temp3:
+            if st.session_state.temperatura >= 0.8:
+                st.metric("Estilo", "Criativo", delta="Variado")
         
         st.markdown("---")
         st.info("""
@@ -447,6 +529,7 @@ def main():
         - Faça perguntas específicas sobre o ERP Protheus
         - Use termos técnicos para melhores resultados
         - Configure sua chave de API para usar o assistente
+        - Ajuste a temperatura conforme sua necessidade
         """)
         
         st.markdown("---")
@@ -458,7 +541,9 @@ def main():
     
     # Indicador de configuração
     ai_provider = "Google Gemini" if st.session_state.use_gemini else "OpenAI"
-    st.caption(f"🔧 Configurado: {ai_provider} | Modelo: {st.session_state.modelo} | Score: {st.session_state.min_score}")
+    temp_desc = "Preciso" if st.session_state.temperatura <= 0.3 else "Balanceado" if st.session_state.temperatura <= 0.7 else "Criativo"
+    
+    st.caption(f"🔧 Configurado: {ai_provider} | Modelo: {st.session_state.modelo} | Score: {st.session_state.min_score} | Temperatura: {st.session_state.temperatura} ({temp_desc})")
     
     # Área de entrada da pergunta
     user_query = st.text_area(
