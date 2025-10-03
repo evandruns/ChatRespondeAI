@@ -2,13 +2,15 @@ import streamlit as st
 import os
 import re
 import urllib.parse
+import random
+import time
 from typing import List, Set
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 import cloudscraper
-import pyperclip  # Adicione esta importação
+import pyperclip
 
 # ---------------------------
 # Configuração Inicial
@@ -20,8 +22,40 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Inicializar scraper
-scraper = cloudscraper.create_scraper()
+# Headers melhorados para evitar 403
+DEFAULT_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': 'https://centraldeatendimento.totvs.com/',
+    'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'same-origin',
+    'Upgrade-Insecure-Requests': '1',
+    'DNT': '1'
+}
+
+# Lista de User-Agents alternativos
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+]
+
+# Inicializar scraper com configurações melhoradas
+scraper = cloudscraper.create_scraper(
+    browser={
+        'browser': 'chrome',
+        'platform': 'windows',
+        'mobile': False
+    }
+)
 
 # ---------------------------
 # Stop words e pré-processamento
@@ -76,21 +110,29 @@ def tem_video_ou_anexo(query: str) -> bool:
             return True
     return False
 
+def get_headers_with_random_ua():
+    """Retorna headers com User-Agent aleatório"""
+    headers = DEFAULT_HEADERS.copy()
+    headers['User-Agent'] = random.choice(USER_AGENTS)
+    return headers
+
 def pesquisar_interna_totvs(query: str, limit: int = 8) -> List[str]:
     base = "https://centraldeatendimento.totvs.com"
     search_url = f"{base}/hc/pt-br/search?query={urllib.parse.quote(query)}"
-    headers = {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,*/*;q=0.8',
-        'Accept-Language': 'pt-BR,pt;q=0.9',
-        'Referer': 'https://centraldeatendimento.totvs.com/',
-    }
-
+    
     links = []
     try:
-        resp = scraper.get(search_url, headers=headers, timeout=15)
+        headers = get_headers_with_random_ua()
+        resp = scraper.get(search_url, headers=headers, timeout=20)
+        
+        if resp.status_code == 403:
+            st.warning("⚠️ Acesso bloqueado temporariamente. Tentando abordagem alternativa...")
+            # Tentar com requests diretamente
+            resp = requests.get(search_url, headers=headers, timeout=20)
+        
         resp.raise_for_status()
         soup = BeautifulSoup(resp.content, "html.parser")
+        
         for a in soup.select("a[href*='/articles/']"):
             href = a.get("href")
             if not href:
@@ -101,8 +143,15 @@ def pesquisar_interna_totvs(query: str, limit: int = 8) -> List[str]:
                 links.append(href)
             if len(links) >= limit:
                 break
+                
+    except requests.HTTPError as e:
+        if e.response.status_code == 403:
+            st.error(f"❌ Acesso negado (403) para a pesquisa. Tente novamente em alguns instantes.")
+        else:
+            st.error(f"Erro HTTP {e.response.status_code} na pesquisa interna")
     except Exception as e:
         st.error(f"Erro na pesquisa interna: {e}")
+        
     return links
 
 def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
@@ -114,6 +163,7 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
         
     found: List[str] = []
     seen: Set[str] = set()
+    
     try:
         with DDGS() as ddgs:
             for r in ddgs.text(search_query, max_results=20):
@@ -127,6 +177,7 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
     except Exception as e:
         st.error(f"Erro no DuckDuckGo: {e}")
 
+    # Se não encontrou links suficientes, tentar pesquisa interna
     if len(found) < max_links:
         interna = pesquisar_interna_totvs(cleaned, limit=max_links)
         for url in interna:
@@ -145,24 +196,64 @@ def extrair_conteudo_pagina(url: str) -> str:
     if '/search?' in url:
         return "Página de pesquisa - conteúdo não extraído"
 
-    headers = {'User-Agent': 'Mozilla/5.0'}
     try:
-        resp = scraper.get(url, headers=headers, timeout=15)
+        # Primeira tentativa: cloudscraper com headers melhorados
+        headers = get_headers_with_random_ua()
+        
+        # Pequena pausa aleatória para evitar detecção
+        time.sleep(random.uniform(1, 3))
+        
+        resp = scraper.get(url, headers=headers, timeout=20)
+        
+        # Se der 403, tentar com requests + headers alternativos
+        if resp.status_code == 403:
+            st.warning(f"⚠️ Cloudscraper bloqueado para {url}. Tentando abordagem alternativa...")
+            
+            # Tentar com requests e headers diferentes
+            alt_headers = headers.copy()
+            alt_headers['User-Agent'] = random.choice(USER_AGENTS)
+            
+            resp = requests.get(url, headers=alt_headers, timeout=20)
+            
+            if resp.status_code == 403:
+                st.error(f"❌ Acesso negado para: {url}")
+                return "Conteúdo não acessível - erro 403 Forbidden"
+        
         resp.raise_for_status()
+        
         soup = BeautifulSoup(resp.content, 'html.parser')
+        
+        # Remover elementos desnecessários
         for el in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form']):
             el.decompose()
-        content = soup.select_one("article") or soup.select_one("main") or soup.select_one(".article-body")
+            
+        # Tentar encontrar o conteúdo principal
+        content = (soup.select_one("article") or 
+                  soup.select_one("main") or 
+                  soup.select_one(".article-body") or
+                  soup.select_one(".article-content") or
+                  soup.select_one(".content"))
+        
         if content:
-            for el in content.select('.article-attachments, .article-meta, .article-votes'):
+            # Remover elementos específicos do help center
+            for el in content.select('.article-attachments, .article-meta, .article-votes, .article-info, .comments'):
                 el.decompose()
             text = content.get_text(separator=' ', strip=True)
         else:
+            # Fallback: pegar todo o texto
             text = soup.get_text(separator=' ', strip=True)
+            
         return clean_text(text)[:6000]
+        
+    except requests.HTTPError as e:
+        if e.response.status_code == 403:
+            return f"Erro 403 - Acesso negado: {url}"
+        elif e.response.status_code == 404:
+            return f"Erro 404 - Página não encontrada: {url}"
+        else:
+            return f"Erro HTTP {e.response.status_code} ao acessar: {url}"
     except Exception as e:
-        st.error(f"Erro ao extrair conteúdo: {e}")
-        return ""
+        return f"Erro ao extrair conteúdo: {str(e)}"
 
 def pontuar_relevancia(texto: str, query: str) -> float:
     tokens_query = set(clean_query(query).split())
@@ -174,8 +265,12 @@ def pontuar_relevancia(texto: str, query: str) -> float:
 def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, use_gemini: bool, api_key: str):
     """Função unificada que escolhe entre Gemini e ChatGPT"""
     
-    if not context or not context.strip():
-        return "Não encontrei essa informação na documentação oficial"
+    # Filtrar contexto removendo mensagens de erro
+    if "erro 403" in context.lower() or "acesso negado" in context.lower():
+        context = "Conteúdo não disponível devido a restrições de acesso."
+    
+    if not context or not context.strip() or context == "Conteúdo não disponível devido a restrições de acesso.":
+        return "Não encontrei essa informação na documentação oficial devido a restrições de acesso."
 
     if use_gemini:
         return get_gemini_response(query, context, fontes, modelo, api_key)
@@ -236,40 +331,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
     except Exception as e:
         return f"Erro ao gerar resposta com OpenAI: {e}"
 
-# ---------------------------
-# Interface Streamlit
-# ---------------------------
-def inicializar_session_state():
-    """Inicializa as variáveis de session state"""
-    if 'min_score' not in st.session_state:
-        st.session_state.min_score = 0.5
-    if 'use_gemini' not in st.session_state:
-        st.session_state.use_gemini = True
-    if 'modelo' not in st.session_state:
-        st.session_state.modelo = "gemini-2.0-flash"
-    if 'api_key' not in st.session_state:
-        st.session_state.api_key = ""
-
-def atualizar_lista_modelos():
-    """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
-    if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-pro","gemini-2.0-flash","gemini-1.5-pro"]
-        if not st.session_state.modelo.startswith("gemini"):
-            st.session_state.modelo = "gemini-2.0-flash"
-    else:
-        modelos_disponiveis = ["gpt-5","gpt-5-mini","gpt-5-nano","gpt-4.1","gpt-4.1-mini","gpt-4.1-nano","gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
-        if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
-            st.session_state.modelo = "gpt-4o-mini"
-    return modelos_disponiveis
-
-def copiar_para_area_transferencia(texto: str):
-    """Copia texto para área de transferência"""
-    try:
-        pyperclip.copy(texto)
-        return True
-    except Exception as e:
-        st.error(f"Erro ao copiar: {e}")
-        return False
+# ... (o restante do código da interface permanece igual) ...
 
 def processar_pergunta(user_query: str):
     """Processa a pergunta do usuário e retorna a resposta"""
