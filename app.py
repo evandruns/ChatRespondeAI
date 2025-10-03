@@ -261,6 +261,36 @@ def pontuar_relevancia(texto: str, query: str) -> float:
         return 0.0
     return len(tokens_query & tokens_texto) / len(tokens_query)
 
+def formatar_links_saiba_mais(links: List[str]) -> str:
+    """Formata os links para a seção Saiba Mais"""
+    if not links:
+        return ""
+    
+    padroes_de_remocao = ["-Cross", "-CROSS", "-RH", "-MP", "-Logística", "-Framework", "-LOG", "-FIN", "-FAT", "-CRM"]
+    
+    links_formatados = []
+    for link in links:
+        link_limpo = link
+        for padrao in padroes_de_remocao:
+            posicao = link.find(padrao)
+            if posicao != -1:
+                link_limpo = link[:posicao]
+                break
+        links_formatados.append(link_limpo)
+    
+    # Remover duplicatas mantendo a ordem
+    links_unicos = []
+    for link in links_formatados:
+        if link not in links_unicos:
+            links_unicos.append(link)
+    
+    # Formatar a seção Saiba Mais
+    saiba_mais = "\n\n**🔗 Saiba mais:**\n"
+    for i, link in enumerate(links_unicos[:5], 1):  # Limitar a 5 links
+        saiba_mais += f"{i}. {link}\n"
+    
+    return saiba_mais
+
 def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, use_gemini: bool, api_key: str, temperatura: float):
     """Função unificada que escolhe entre Gemini e ChatGPT"""
     
@@ -299,7 +329,7 @@ def get_gemini_response(query: str, context: str, fontes: List[str], model: str,
             "Responda de forma técnica, precisa e baseada exclusivamente no contexto fornecido.\n"
             "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\".\n"
             "- Seja objetivo e inclua passos acionáveis quando aplicável.\n"
-            "- Ao final, adicione a seção 'Fontes consultadas' com os links.\n"
+            "- NÃO inclua a seção 'Fontes consultadas' no final - isso será adicionado automaticamente.\n"
         )
 
         user_content = (
@@ -324,7 +354,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
             "Responda de forma técnica, precisa e baseada exclusivamente no contexto fornecido.\n"
             "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\".\n"
             "- Seja objetivo e inclua passos acionáveis quando aplicável.\n"
-            "- Ao final, adicione a seção 'Fontes consultadas' com os links.\n"
+            "- NÃO inclua a seção 'Fontes consultadas' no final - isso será adicionado automaticamente.\n"
         )
         
         user_content = f"PERGUNTA DO USUÁRIO:\n{query}\n\nCONTEÚDO EXTRAÍDO:\n{context}\n\nFontes disponíveis:\n" + "\n".join(fontes)
@@ -363,11 +393,11 @@ def inicializar_session_state():
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
     if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+        modelos_disponiveis = ["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-pro","gemini-2.0-flash","gemini-1.5-pro"]
         if not st.session_state.modelo.startswith("gemini"):
-            st.session_state.modelo = "gemini-1.5-flash"
+            st.session_state.modelo = "gemini-2.0-flash"
     else:
-        modelos_disponiveis = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+        modelos_disponiveis = ["gpt-5","gpt-5-mini","gpt-5-nano","gpt-4.1","gpt-4.1-mini","gpt-4.1-nano","gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
         if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
             st.session_state.modelo = "gpt-4o-mini"
     return modelos_disponiveis
@@ -432,6 +462,19 @@ def processar_pergunta(user_query: str):
                     st.session_state.api_key,
                     st.session_state.temperatura
                 )
+            
+            # Adicionar seção "Saiba mais" se a resposta for válida
+            mensagens_erro = [
+                "não foi possível validar essa informação específica",
+                "não encontrei essa informação na documentação oficial",
+                "conteúdo não disponível devido a restrições de acesso"
+            ]
+            
+            resposta_valida = not any(erro in resposta_final.lower() for erro in mensagens_erro)
+            
+            if resposta_valida and links:
+                saiba_mais = formatar_links_saiba_mais(links)
+                resposta_final += saiba_mais
             
             status.update(label="Processamento completo!", state="complete")
             
