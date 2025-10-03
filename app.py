@@ -4,7 +4,7 @@ import re
 import urllib.parse
 import random
 import time
-from typing import List, Set
+from typing import List, Set, Tuple
 import pandas as pd
 import requests
 from bs4 import BeautifulSoup
@@ -153,7 +153,8 @@ def pesquisar_interna_totvs(query: str, limit: int = 8) -> List[str]:
         
     return links
 
-def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
+def buscar_documentacao_totvs(query: str, max_links: int = 8) -> List[str]:
+    """Busca links na documentação TOTVS - aumentado para 8 links para ter mais opções"""
     cleaned = clean_query(query) or query
     if "Protheus" not in cleaned.lower():
         search_query = f"site:centraldeatendimento.totvs.com Protheus {cleaned}"
@@ -165,7 +166,7 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
     
     try:
         with DDGS() as ddgs:
-            for r in ddgs.text(search_query, max_results=20):
+            for r in ddgs.text(search_query, max_results=25):  # Aumentado para 25
                 url = r.get("href", "")
                 if url.startswith("https://centraldeatendimento.totvs.com") and "/articles/" in url:
                     if url not in seen:
@@ -260,6 +261,136 @@ def pontuar_relevancia(texto: str, query: str) -> float:
     if not tokens_query or not tokens_texto:
         return 0.0
     return len(tokens_query & tokens_texto) / len(tokens_query)
+
+def reclassificar_artigos_ia(artigos: List[Tuple[float, str, str]], query: str, use_gemini: bool, api_key: str, modelo: str) -> List[Tuple[float, str, str]]:
+    """Usa IA para reclassificar os artigos por relevância"""
+    if not artigos:
+        return artigos
+    
+    try:
+        # Preparar dados dos artigos para a IA
+        artigos_info = []
+        for score, url, conteudo in artigos:
+            # Extrair título do URL ou usar trecho do conteúdo
+            titulo = url.split('/')[-1].replace('-', ' ')[:100]
+            if conteudo and len(conteudo) > 50:
+                preview = conteudo[:200] + "..."
+            else:
+                preview = "Conteúdo não disponível"
+            artigos_info.append(f"URL: {url}\nTítulo: {titulo}\nPreview: {preview}\n---")
+        
+        artigos_texto = "\n".join(artigos_info)
+        
+        if use_gemini:
+            resposta = reclassificar_gemini(query, artigos_texto, modelo, api_key)
+        else:
+            resposta = reclassificar_openai(query, artigos_texto, modelo, api_key)
+        
+        # Processar resposta da IA para extrair ordenação
+        artigos_ordenados = processar_resposta_reclassificacao(resposta, artigos)
+        
+        if artigos_ordenados:
+            return artigos_ordenados
+        else:
+            # Fallback: ordenação original por score
+            return sorted(artigos, reverse=True, key=lambda x: x[0])
+            
+    except Exception as e:
+        st.error(f"Erro na reclassificação por IA: {e}")
+        # Fallback para ordenação por score básico
+        return sorted(artigos, reverse=True, key=lambda x: x[0])
+
+def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: str) -> str:
+    """Reclassifica artigos usando Gemini"""
+    import google.generativeai as genai
+    genai.configure(api_key=api_key)
+    
+    prompt = f"""
+    Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
+    
+    PERGUNTA DO USUÁRIO: {query}
+    
+    ARTIGOS ENCONTRADOS:
+    {artigos_texto}
+    
+    INSTRUÇÕES:
+    1. Analise cada artigo em relação à pergunta
+    2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE
+    3. Retorne APENAS os URLs em ordem de relevância, um por linha
+    4. Não inclua explicações, apenas a lista ordenada de URLs
+    
+    URLs ORDENADOS:
+    """
+    
+    try:
+        gemini_model = genai.GenerativeModel(model_name=model)
+        response = gemini_model.generate_content([prompt])
+        return response.text.strip()
+    except Exception as e:
+        raise Exception(f"Erro Gemini: {e}")
+
+def reclassificar_openai(query: str, artigos_texto: str, model: str, api_key: str) -> str:
+    """Reclassifica artigos usando OpenAI"""
+    from openai import OpenAI
+    client = OpenAI(api_key=api_key)
+    
+    prompt = f"""
+    Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
+    
+    PERGUNTA DO USUÁRIO: {query}
+    
+    ARTIGOS ENCONTRADOS:
+    {artigos_texto}
+    
+    INSTRUÇÕES:
+    1. Analise cada artigo em relação à pergunta
+    2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE
+    3. Retorne APENAS os URLs em ordem de relevância, um por linha
+    4. Não inclua explicações, apenas a lista ordenada de URLs
+    """
+    
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[
+                {"role": "system", "content": "Você é um especialista em classificar documentação técnica por relevância."},
+                {"role": "user", "content": prompt},
+            ],
+            temperature=0.1,
+            max_tokens=500,
+        )
+        return resp.choices[0].message.content.strip()
+    except Exception as e:
+        raise Exception(f"Erro OpenAI: {e}")
+
+def processar_resposta_reclassificacao(resposta_ia: str, artigos_originais: List[Tuple[float, str, str]]) -> List[Tuple[float, str, str]]:
+    """Processa a resposta da IA e reordena os artigos"""
+    if not resposta_ia:
+        return []
+    
+    # Extrair URLs da resposta
+    urls_ordenados = []
+    for linha in resposta_ia.split('\n'):
+        linha = linha.strip()
+        if linha.startswith('http'):
+            urls_ordenados.append(linha)
+    
+    # Criar mapa de artigos por URL
+    artigo_por_url = {url: (score, url, conteudo) for score, url, conteudo in artigos_originais}
+    
+    # Reordenar baseado na classificação da IA
+    artigos_ordenados = []
+    for url in urls_ordenados:
+        if url in artigo_por_url:
+            artigos_ordenados.append(artigo_por_url[url])
+    
+    # Adicionar quaisquer artigos que não foram classificados pela IA
+    urls_adicionados = set(urls_ordenados)
+    for artigo in artigos_originais:
+        if artigo[1] not in urls_adicionados:
+            artigos_ordenados.append(artigo)
+    
+    return artigos_ordenados
 
 def formatar_links_saiba_mais(links: List[str]) -> str:
     """Formata os links para a seção Saiba Mais"""
@@ -378,7 +509,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
 def inicializar_session_state():
     """Inicializa as variáveis de session state"""
     if 'min_score' not in st.session_state:
-        st.session_state.min_score = 0.6
+        st.session_state.min_score = 0.5
     if 'use_gemini' not in st.session_state:
         st.session_state.use_gemini = True
     if 'modelo' not in st.session_state:
@@ -386,16 +517,18 @@ def inicializar_session_state():
     if 'api_key' not in st.session_state:
         st.session_state.api_key = ""
     if 'temperatura' not in st.session_state:
-        st.session_state.temperatura = 0.0
+        st.session_state.temperatura = 0.1
     if 'mostrar_codigo' not in st.session_state:
         st.session_state.mostrar_codigo = False
+    if 'reclassificar_ia' not in st.session_state:
+        st.session_state.reclassificar_ia = True  # Nova opção
 
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
     if st.session_state.use_gemini:
         modelos_disponiveis = ["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-pro","gemini-2.0-flash","gemini-1.5-pro"]
         if not st.session_state.modelo.startswith("gemini"):
-            st.session_state.modelo = "gemini-2.0-flash"
+            st.session_state.modelo = "gemini-1.5-flash"
     else:
         modelos_disponiveis = ["gpt-5","gpt-5-mini","gpt-5-nano","gpt-4.1","gpt-4.1-mini","gpt-4.1-nano","gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
         if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
@@ -419,7 +552,7 @@ def processar_pergunta(user_query: str):
         # Buscar links
         with st.status("Buscando na documentação TOTVS...", expanded=True) as status:
             status.write("🔍 Procurando artigos relevantes...")
-            links = buscar_documentacao_totvs(user_query, max_links=5)
+            links = buscar_documentacao_totvs(user_query, max_links=8)  # Buscar mais links
             
             if not links:
                 return "Não foram encontrados artigos relevantes na documentação TOTVS."
@@ -428,25 +561,41 @@ def processar_pergunta(user_query: str):
             contexto_scores = []
             
             # Extrair conteúdo dos links
-            for i, link in enumerate(links[:3]):
-                status.write(f"📖 Lendo artigo {i+1}/3...")
+            for i, link in enumerate(links):
+                status.write(f"📖 Lendo artigo {i+1}/{len(links)}...")
                 texto = extrair_conteudo_pagina(link)
                 score = pontuar_relevancia(texto, user_query)
                 contexto_scores.append((score, link, texto))
 
-            contexto_scores.sort(reverse=True, key=lambda x: x[0])
+            # Reclassificação inteligente por IA
+            if st.session_state.reclassificar_ia and len(contexto_scores) > 1:
+                status.write("🧠 Reclassificando artigos por relevância...")
+                contexto_scores = reclassificar_artigos_ia(
+                    contexto_scores, 
+                    user_query, 
+                    st.session_state.use_gemini,
+                    st.session_state.api_key,
+                    st.session_state.modelo
+                )
+            else:
+                # Ordenação tradicional por score
+                contexto_scores.sort(reverse=True, key=lambda x: x[0])
             
             status.write("🤖 Gerando resposta com IA...")
             
+            # Usar os 3 artigos mais relevantes para o contexto
+            artigos_relevantes = contexto_scores[:3]
+            contexto_combinado = "\n\n".join([conteudo for _, _, conteudo in artigos_relevantes if conteudo.strip()])
+            
             # Gerar resposta
-            if not contexto_scores or not contexto_scores[0][2].strip():
+            if not contexto_combinado.strip():
                 resposta_final = "Atenção: não foi possível validar essa informação específica na documentação oficial."
             elif contexto_scores[0][0] < st.session_state.min_score:
                 resposta_final = "Observação: essa consulta aborda um ponto não detalhado na documentação. A resposta é baseada em conhecimento geral.\n\n"
                 resposta_final += get_ai_response(
                     user_query, 
-                    contexto_scores[0][2], 
-                    links, 
+                    contexto_combinado, 
+                    [link for _, link, _ in artigos_relevantes], 
                     st.session_state.modelo,
                     st.session_state.use_gemini,
                     st.session_state.api_key,
@@ -455,8 +604,8 @@ def processar_pergunta(user_query: str):
             else:
                 resposta_final = get_ai_response(
                     user_query, 
-                    contexto_scores[0][2], 
-                    links, 
+                    contexto_combinado, 
+                    [link for _, link, _ in artigos_relevantes], 
                     st.session_state.modelo,
                     st.session_state.use_gemini,
                     st.session_state.api_key,
@@ -473,7 +622,7 @@ def processar_pergunta(user_query: str):
             resposta_valida = not any(erro in resposta_final.lower() for erro in mensagens_erro)
             
             if resposta_valida and links:
-                saiba_mais = formatar_links_saiba_mais(links)
+                saiba_mais = formatar_links_saiba_mais([link for _, link, _ in contexto_scores[:5]])  # Top 5 links
                 resposta_final += saiba_mais
             
             status.update(label="Processamento completo!", state="complete")
@@ -501,7 +650,13 @@ def main():
         # Lista de modelos atualizada
         modelos_disponiveis = atualizar_lista_modelos()
         
-        # Configurações
+        # Configurações avançadas
+        st.session_state.reclassificar_ia = st.checkbox(
+            "🧠 Reclassificação Inteligente por IA",
+            value=st.session_state.reclassificar_ia,
+            help="Usa IA para reordenar artigos por relevância (recomendado)"
+        )
+        
         st.session_state.min_score = st.slider(
             "🎯 Score Mínimo de Relevância",
             min_value=0.0,
@@ -565,6 +720,7 @@ def main():
         - Use termos técnicos para melhores resultados
         - Configure sua chave de API para usar o assistente
         - Ajuste a temperatura conforme sua necessidade
+        - Ative a reclassificação IA para respostas mais precisas
         """)
         
         st.markdown("---")
@@ -577,8 +733,9 @@ def main():
     # Indicador de configuração
     ai_provider = "Google Gemini" if st.session_state.use_gemini else "OpenAI"
     temp_desc = "Preciso" if st.session_state.temperatura <= 0.3 else "Balanceado" if st.session_state.temperatura <= 0.7 else "Criativo"
+    reclass_desc = "✅ Ativa" if st.session_state.reclassificar_ia else "❌ Inativa"
     
-    st.caption(f"🔧 Configurado: {ai_provider} | Modelo: {st.session_state.modelo} | Score: {st.session_state.min_score} | Temperatura: {st.session_state.temperatura} ({temp_desc})")
+    st.caption(f"🔧 Configurado: {ai_provider} | Modelo: {st.session_state.modelo} | Score: {st.session_state.min_score} | Temperatura: {st.session_state.temperatura} ({temp_desc}) | Reclassificação IA: {reclass_desc}")
     
     # Área de entrada da pergunta
     user_query = st.text_area(
