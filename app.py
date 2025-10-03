@@ -571,7 +571,7 @@ def main():
         st.caption("By Evandro Narciso Santos")
     
     # Conteúdo principal
-    st.title("🤖 Assistente de Suporte TOTVS")
+    st.title("🤖 Responde AI TOTVS")
     st.markdown("Sua assistente inteligente para dúvidas sobre o **ERP Protheus**")
     
     # Indicador de configuração
