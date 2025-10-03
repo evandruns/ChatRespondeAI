@@ -1,4 +1,4 @@
-# 🤖 Assistente de Suporte TOTVS
+# 🤖 Responde AI TOTVS
 
 Assistente inteligente para dúvidas técnicas sobre o ERP Protheus da TOTVS.
 
