@@ -8,12 +8,13 @@ import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 import cloudscraper
+import pyperclip  # Adicione esta importação
 
 # ---------------------------
 # Configuração Inicial
 # ---------------------------
 st.set_page_config(
-    page_title="Assistente de Suporte TOTVS",
+    page_title="Responde AI TOTVS",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -261,6 +262,15 @@ def atualizar_lista_modelos():
             st.session_state.modelo = "gpt-4o-mini"
     return modelos_disponiveis
 
+def copiar_para_area_transferencia(texto: str):
+    """Copia texto para área de transferência"""
+    try:
+        pyperclip.copy(texto)
+        return True
+    except Exception as e:
+        st.error(f"Erro ao copiar: {e}")
+        return False
+
 def processar_pergunta(user_query: str):
     """Processa a pergunta do usuário e retorna a resposta"""
     # Verificar se a API key foi configurada
@@ -419,12 +429,23 @@ def main():
     if 'resposta' in st.session_state and st.session_state.resposta:
         st.markdown("---")
         st.subheader("📋 Resposta:")
-        st.write(st.session_state.resposta)
         
-        # Botão para copiar resposta
-        if st.button("📋 Copiar Resposta"):
-            st.code(st.session_state.resposta, language="text")
-            st.success("Resposta copiada para a área de transferência!")
+        # Área da resposta com botão de copiar
+        col_resp1, col_resp2 = st.columns([4, 1])
+        
+        with col_resp1:
+            st.write(st.session_state.resposta)
+        
+        with col_resp2:
+            if st.button("📋 Copiar", key="copiar_btn", use_container_width=True):
+                if copiar_para_area_transferencia(st.session_state.resposta):
+                    st.success("✅ Copiado!")
+                else:
+                    st.error("❌ Erro ao copiar")
+            
+            # Botão para visualizar como código
+            if st.button("📄 Código", key="codigo_btn", use_container_width=True):
+                st.code(st.session_state.resposta, language="text")
 
 if __name__ == "__main__":
     main()
