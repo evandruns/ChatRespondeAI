@@ -356,7 +356,7 @@ def reclassificar_openai(query: str, artigos_texto: str, model: str, api_key: st
                 {"role": "system", "content": "Você é um especialista em classificar documentação técnica por relevância."},
                 {"role": "user", "content": prompt},
             ],
-            temperature=0.1,
+            temperature=0.0,
             max_tokens=500,
         )
         return resp.choices[0].message.content.strip()
