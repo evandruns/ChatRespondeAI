@@ -246,18 +246,18 @@ def inicializar_session_state():
     if 'use_gemini' not in st.session_state:
         st.session_state.use_gemini = True
     if 'modelo' not in st.session_state:
-        st.session_state.modelo = "gemini-1.5-flash"
+        st.session_state.modelo = "gemini-2.0-flash"
     if 'api_key' not in st.session_state:
         st.session_state.api_key = ""
 
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
     if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash"]
+        modelos_disponiveis = ["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-pro","gemini-2.0-flash","gemini-1.5-pro"]
         if not st.session_state.modelo.startswith("gemini"):
-            st.session_state.modelo = "gemini-1.5-flash"
+            st.session_state.modelo = "gemini-2.0-flash"
     else:
-        modelos_disponiveis = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
+        modelos_disponiveis = ["gpt-5","gpt-5-mini","gpt-5-nano","gpt-4.1","gpt-4.1-mini","gpt-4.1-nano","gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
         if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
             st.session_state.modelo = "gpt-4o-mini"
     return modelos_disponiveis
