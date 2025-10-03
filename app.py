@@ -552,7 +552,7 @@ def processar_pergunta(user_query: str):
         # Buscar links
         with st.status("Buscando na documentação TOTVS...", expanded=True) as status:
             status.write("🔍 Procurando artigos relevantes...")
-            links = buscar_documentacao_totvs(user_query, max_links=8)  # Buscar mais links
+            links = buscar_documentacao_totvs(user_query, max_links=10)  # Buscar mais links
             
             if not links:
                 return "Não foram encontrados artigos relevantes na documentação TOTVS."
