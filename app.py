@@ -447,7 +447,7 @@ def get_gemini_response(query: str, context: str, fontes: List[str], model: str,
             "temperature": temperatura,
             "top_p": 0.0,
             "top_k": 40,
-            "max_output_tokens": 512,
+            "max_output_tokens": 1024,
         }
         
         gemini_model = genai.GenerativeModel(
