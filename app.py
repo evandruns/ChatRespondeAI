@@ -166,7 +166,7 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
     
     try:
         with DDGS() as ddgs:
-            for r in ddgs.text(search_query, max_results=25):  # Aumentado para 25
+            for r in ddgs.text(search_query, max_results=20):  # Aumentado para 20
                 url = r.get("href", "")
                 if url.startswith("https://centraldeatendimento.totvs.com") and "/articles/" in url:
                     if url not in seen:
@@ -552,7 +552,7 @@ def processar_pergunta(user_query: str):
         # Buscar links
         with st.status("Buscando na documentação TOTVS...", expanded=True) as status:
             status.write("🔍 Procurando artigos relevantes...")
-            links = buscar_documentacao_totvs(user_query, max_links=10)  # Buscar mais links
+            links = buscar_documentacao_totvs(user_query, max_links=5)  # Buscar mais links
             
             if not links:
                 return "Não foram encontrados artigos relevantes na documentação TOTVS."
