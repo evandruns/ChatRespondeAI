@@ -10,13 +10,12 @@ import requests
 from bs4 import BeautifulSoup
 from ddgs import DDGS
 import cloudscraper
-import pyperclip
 
 # ---------------------------
 # Configuração Inicial
 # ---------------------------
 st.set_page_config(
-    page_title="Assistente de Suporte TOTVS",
+    page_title="Responde AI TOTVS",
     page_icon="🤖",
     layout="wide",
     initial_sidebar_state="expanded"
@@ -358,6 +357,8 @@ def inicializar_session_state():
         st.session_state.api_key = ""
     if 'temperatura' not in st.session_state:
         st.session_state.temperatura = 0.1
+    if 'mostrar_codigo' not in st.session_state:
+        st.session_state.mostrar_codigo = False
 
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
@@ -370,15 +371,6 @@ def atualizar_lista_modelos():
         if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
             st.session_state.modelo = "gpt-4o-mini"
     return modelos_disponiveis
-
-def copiar_para_area_transferencia(texto: str):
-    """Copia texto para área de transferência"""
-    try:
-        pyperclip.copy(texto)
-        return True
-    except Exception as e:
-        st.error(f"Erro ao copiar: {e}")
-        return False
 
 def processar_pergunta(user_query: str):
     """Processa a pergunta do usuário e retorna a resposta"""
@@ -565,11 +557,13 @@ def main():
                 else:
                     resposta = processar_pergunta(user_query)
                     st.session_state.resposta = resposta
+                    st.session_state.mostrar_codigo = False
     
     with col2:
         if st.button("🧹 Limpar", use_container_width=True):
             if 'resposta' in st.session_state:
                 del st.session_state.resposta
+            st.session_state.mostrar_codigo = False
             st.rerun()
     
     # Exibir resposta se existir
@@ -577,22 +571,42 @@ def main():
         st.markdown("---")
         st.subheader("📋 Resposta:")
         
-        # Área da resposta com botão de copiar
-        col_resp1, col_resp2 = st.columns([4, 1])
+        # Controles para a resposta
+        col_controls1, col_controls2, col_controls3 = st.columns([2, 1, 1])
         
-        with col_resp1:
+        with col_controls1:
+            # Toggle entre visualização normal e código
+            if st.button("📄 Visualizar como Código" if not st.session_state.mostrar_codigo else "📝 Visualizar Normal", 
+                        key="toggle_view", use_container_width=True):
+                st.session_state.mostrar_codigo = not st.session_state.mostrar_codigo
+                st.rerun()
+        
+        with col_controls2:
+            # Botão para copiar (usando st.code que tem cópia nativa)
+            if st.button("📋 Copiar Resposta", key="copy_btn", use_container_width=True):
+                # Mostrar a resposta em formato código que permite cópia fácil
+                st.session_state.mostrar_codigo = True
+                st.success("✅ Use Ctrl+C para copiar o texto acima!")
+        
+        with col_controls3:
+            # Botão para baixar
+            if st.button("💾 Baixar", key="download_btn", use_container_width=True):
+                st.download_button(
+                    label="📥 Clique para baixar",
+                    data=st.session_state.resposta,
+                    file_name=f"resposta_totvs_{time.strftime('%Y%m%d_%H%M%S')}.txt",
+                    mime="text/plain",
+                    key="download_file"
+                )
+        
+        # Exibir a resposta
+        if st.session_state.mostrar_codigo:
+            # Modo código - fácil de copiar
+            st.code(st.session_state.resposta, language="text", line_numbers=False)
+            st.info("💡 **Dica:** Selecione o texto acima e use Ctrl+C para copiar")
+        else:
+            # Modo normal - melhor visualização
             st.write(st.session_state.resposta)
-        
-        with col_resp2:
-            if st.button("📋 Copiar", key="copiar_btn", use_container_width=True):
-                if copiar_para_area_transferencia(st.session_state.resposta):
-                    st.success("✅ Copiado!")
-                else:
-                    st.error("❌ Erro ao copiar")
-            
-            # Botão para visualizar como código
-            if st.button("📄 Código", key="codigo_btn", use_container_width=True):
-                st.code(st.session_state.resposta, language="text")
 
 if __name__ == "__main__":
     main()
