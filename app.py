@@ -517,7 +517,7 @@ def inicializar_session_state():
     if 'api_key' not in st.session_state:
         st.session_state.api_key = ""
     if 'temperatura' not in st.session_state:
-        st.session_state.temperatura = 0.1
+        st.session_state.temperatura = 0.0
     if 'mostrar_codigo' not in st.session_state:
         st.session_state.mostrar_codigo = False
     if 'reclassificar_ia' not in st.session_state:
@@ -526,7 +526,7 @@ def inicializar_session_state():
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
     if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-2.5-pro","gemini-2.5-flash","gemini-2.0-pro","gemini-2.0-flash","gemini-1.5-pro"]
+        modelos_disponiveis = ["gemini-2.5-flash","gemini-2.5-pro","gemini-2.0-pro","gemini-2.0-flash","gemini-1.5-pro"]
         if not st.session_state.modelo.startswith("gemini"):
             st.session_state.modelo = "gemini-1.5-flash"
     else:
