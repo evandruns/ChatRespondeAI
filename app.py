@@ -740,7 +740,7 @@ def main():
     user_query = st.text_area(
         "**Digite sua pergunta:**",
         placeholder="Ex: Como configurar parâmetros financeiros no Protheus?",
-        height=120,
+        height=150,
         help="Descreva sua dúvida técnica sobre o ERP Protheus"
     )
     
