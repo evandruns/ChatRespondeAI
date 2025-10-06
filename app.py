@@ -717,7 +717,6 @@ def main():
         st.info("""
         **💡 Dicas:**
         - Faça perguntas específicas sobre o ERP Protheus
-        - Use termos técnicos para melhores resultados
         - Configure sua chave de API para usar o assistente
         - Ajuste a temperatura conforme sua necessidade
         - Ative a reclassificação IA para respostas mais precisas
