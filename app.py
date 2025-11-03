@@ -21,112 +21,40 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# ---------------------------
-# Configuração Avançada do CloudScraper
-# ---------------------------
-def create_advanced_scraper():
-    """Cria um scraper mais robusto para contornar proteções"""
-    try:
-        scraper = cloudscraper.create_scraper(
-            browser={
-                'browser': 'chrome',
-                'platform': 'windows',
-                'mobile': False
-            },
-            delay=15,
-            interpreter='nodejs'
-        )
-        return scraper
-    except Exception as e:
-        st.warning(f"CloudScraper avançado não disponível: {e}")
-        return requests.Session()
+# Headers melhorados para evitar 403
+DEFAULT_HEADERS = {
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
+    'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
+    'Accept-Encoding': 'gzip, deflate, br',
+    'Referer': 'https://centraldeatendimento.totvs.com/',
+    'Sec-Ch-Ua': '"Google Chrome";v="123", "Not:A-Brand";v="8", "Chromium";v="123"',
+    'Sec-Ch-Ua-Mobile': '?0',
+    'Sec-Ch-Ua-Platform': '"Windows"',
+    'Sec-Fetch-Dest': 'document',
+    'Sec-Fetch-Mode': 'navigate',
+    'Sec-Fetch-Site': 'same-origin',
+    'Upgrade-Insecure-Requests': '1',
+    'DNT': '1'
+}
 
-# Inicializar scraper
-scraper = create_advanced_scraper()
+# Lista de User-Agents alternativos
+USER_AGENTS = [
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36',
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:124.0) Gecko/20100101 Firefox/124.0',
+    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/123.0.0.0 Safari/537.36'
+]
 
-# ---------------------------
-# Headers Melhorados para TOTVS
-# ---------------------------
-def get_totvs_headers():
-    """Headers específicos e realistas para a TOTVS"""
-    user_agents = [
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:121.0) Gecko/20100101 Firefox/121.0',
-    ]
-    
-    return {
-        'User-Agent': random.choice(user_agents),
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8,application/signed-exchange;v=b3;q=0.7',
-        'Accept-Language': 'pt-BR,pt;q=0.9,en;q=0.8,en-GB;q=0.7,en-US;q=0.6',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Referer': 'https://centraldeatendimento.totvs.com/',
-        'DNT': '1',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
-        'Cache-Control': 'max-age=0',
-        'sec-ch-ua': '"Google Chrome";v="119", "Chromium";v="119", "Not?A_Brand";v="24"',
-        'sec-ch-ua-mobile': '?0',
-        'sec-ch-ua-platform': '"Windows"',
+# Inicializar scraper com configurações melhoradas
+scraper = cloudscraper.create_scraper(
+    browser={
+        'browser': 'chrome',
+        'platform': 'windows',
+        'mobile': False
     }
-
-# ---------------------------
-# Sistema de Requisições com Retry Inteligente
-# ---------------------------
-def fazer_requisicao_segura(url, max_tentativas=3):
-    """Sistema robusto de requisições com múltiplas estratégias"""
-    
-    for tentativa in range(max_tentativas):
-        try:
-            # Estratégia 1: CloudScraper com headers específicos
-            headers = get_totvs_headers()
-            
-            # Delay progressivo entre tentativas
-            if tentativa > 0:
-                delay = tentativa * 3 + random.uniform(1, 5)
-                time.sleep(delay)
-            
-            # Fazer requisição
-            response = scraper.get(url, headers=headers, timeout=30)
-            
-            # Verificar se foi bem-sucedido
-            if response.status_code == 200:
-                # Verificar se não é uma página de bloqueio
-                if not any(term in response.text.lower() for term in ['access denied', 'blocked', 'bot detected']):
-                    return response
-            
-            # Se for 403, tentar abordagem alternativa
-            elif response.status_code == 403:
-                st.warning(f"⏳ Tentativa {tentativa + 1}: Acesso bloqueado (403). Tentando nova abordagem...")
-                
-                # Tentar com requests simples e headers diferentes
-                alt_headers = headers.copy()
-                alt_headers['User-Agent'] = random.choice([
-                    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/118.0.0.0 Safari/537.36',
-                    'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/119.0.0.0 Safari/537.36'
-                ])
-                
-                session = requests.Session()
-                response = session.get(url, headers=alt_headers, timeout=25)
-                
-                if response.status_code == 200:
-                    return response
-                    
-        except requests.exceptions.Timeout:
-            st.warning(f"⏰ Timeout na tentativa {tentativa + 1}")
-            continue
-        except requests.exceptions.ConnectionError:
-            st.warning(f"🔌 Erro de conexão na tentativa {tentativa + 1}")
-            continue
-        except Exception as e:
-            st.warning(f"⚠️ Erro na tentativa {tentativa + 1}: {str(e)[:100]}...")
-            continue
-    
-    return None
+)
 
 # ---------------------------
 # Stop words e pré-processamento
@@ -181,127 +109,52 @@ def tem_video_ou_anexo(query: str) -> bool:
             return True
     return False
 
-# ---------------------------
-# Funções de Extração Melhoradas
-# ---------------------------
-def extrair_conteudo_pagina(url: str) -> str:
-    """Extrai conteúdo com sistema anti-bloqueio melhorado"""
-    
-    if '/search?' in url:
-        return "Página de pesquisa - conteúdo não extraído"
-
-    try:
-        # Usar sistema de requisição segura
-        response = fazer_requisicao_segura(url)
-        
-        if not response:
-            return f"❌ Não foi possível acessar a página após múltiplas tentativas: {url}"
-            
-        if response.status_code != 200:
-            return f"Erro HTTP {response.status_code} ao acessar: {url}"
-
-        # Processar conteúdo
-        soup = BeautifulSoup(response.content, 'html.parser')
-        
-        # Remover elementos desnecessários
-        for el in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form', 'iframe']):
-            el.decompose()
-            
-        # Estratégias para encontrar conteúdo
-        selectors = [
-            "article",
-            "main", 
-            ".article-body",
-            ".article-content",
-            ".content",
-            ".post-content",
-            "#content",
-            ".main-content"
-        ]
-        
-        content = None
-        for selector in selectors:
-            content = soup.select_one(selector)
-            if content:
-                break
-                
-        if content:
-            # Limpar elementos específicos do help center
-            unwanted_classes = [
-                'article-attachments', 'article-meta', 'article-votes',
-                'article-info', 'comments', 'share-buttons', 'breadcrumb',
-                'related-articles', 'nav', 'sidebar'
-            ]
-            
-            for class_name in unwanted_classes:
-                for el in content.select(f'.{class_name}'):
-                    el.decompose()
-                    
-            text = content.get_text(separator=' ', strip=True)
-        else:
-            # Fallback: pegar body inteiro
-            body = soup.find('body')
-            if body:
-                text = body.get_text(separator=' ', strip=True)
-            else:
-                text = soup.get_text(separator=' ', strip=True)
-            
-        cleaned_text = clean_text(text)
-        return cleaned_text[:6000] if cleaned_text else "Conteúdo não encontrado na página"
-        
-    except Exception as e:
-        return f"Erro ao extrair conteúdo: {str(e)}"
+def get_headers_with_random_ua():
+    """Retorna headers com User-Agent aleatório"""
+    headers = DEFAULT_HEADERS.copy()
+    headers['User-Agent'] = random.choice(USER_AGENTS)
+    return headers
 
 def pesquisar_interna_totvs(query: str, limit: int = 5) -> List[str]:
-    """Pesquisa interna com proteção contra bloqueios"""
     base = "https://centraldeatendimento.totvs.com"
     search_url = f"{base}/hc/pt-br/search?query={urllib.parse.quote(query)}"
     
     links = []
     try:
-        response = fazer_requisicao_segura(search_url)
+        headers = get_headers_with_random_ua()
+        resp = scraper.get(search_url, headers=headers, timeout=20)
         
-        if not response or response.status_code != 200:
-            st.warning("🔍 Não foi possível acessar a pesquisa interna. Usando apenas busca externa.")
-            return links
-
-        soup = BeautifulSoup(response.content, "html.parser")
+        if resp.status_code == 403:
+            st.warning("⚠️ Acesso bloqueado temporariamente. Tentando abordagem alternativa...")
+            # Tentar com requests diretamente
+            resp = requests.get(search_url, headers=headers, timeout=20)
         
-        # Múltiplos seletores para links de artigos
-        article_selectors = [
-            "a[href*='/articles/']",
-            ".search-result a",
-            ".article-list a",
-            "a.article-link"
-        ]
+        resp.raise_for_status()
+        soup = BeautifulSoup(resp.content, "html.parser")
         
-        for selector in article_selectors:
-            for a in soup.select(selector):
-                href = a.get("href", "")
-                if not href:
-                    continue
-                    
-                if href.startswith("/"):
-                    href = base + href
-                elif not href.startswith("http"):
-                    href = base + "/" + href.lstrip("/")
-                    
-                if href.startswith(base) and "/articles/" in href and href not in links:
-                    links.append(href)
-                    
-                if len(links) >= limit:
-                    break
-                    
+        for a in soup.select("a[href*='/articles/']"):
+            href = a.get("href")
+            if not href:
+                continue
+            if href.startswith("/"):
+                href = base + href
+            if href.startswith(base) and href not in links:
+                links.append(href)
             if len(links) >= limit:
                 break
                 
+    except requests.HTTPError as e:
+        if e.response.status_code == 403:
+            st.error(f"❌ Acesso negado (403) para a pesquisa. Tente novamente em alguns instantes.")
+        else:
+            st.error(f"Erro HTTP {e.response.status_code} na pesquisa interna")
     except Exception as e:
         st.error(f"Erro na pesquisa interna: {e}")
         
     return links
 
 def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
-    """Busca links na documentação TOTVS"""
+    """Busca links na documentação TOTVS - aumentado para 5 links para ter mais opções"""
     cleaned = clean_query(query) or query
     if "Protheus" not in cleaned.lower():
         search_query = f"site:centraldeatendimento.totvs.com Protheus {cleaned}"
@@ -313,7 +166,7 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
     
     try:
         with DDGS() as ddgs:
-            for r in ddgs.text(search_query, max_results=20):
+            for r in ddgs.text(search_query, max_results=20):  # Aumentado para 20
                 url = r.get("href", "")
                 if url.startswith("https://centraldeatendimento.totvs.com") and "/articles/" in url:
                     if url not in seen:
@@ -339,9 +192,69 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
 
     return found[:max_links]
 
-# ---------------------------
-# Sistema de Relevância e IA
-# ---------------------------
+def extrair_conteudo_pagina(url: str) -> str:
+    if '/search?' in url:
+        return "Página de pesquisa - conteúdo não extraído"
+
+    try:
+        # Primeira tentativa: cloudscraper com headers melhorados
+        headers = get_headers_with_random_ua()
+        
+        # Pequena pausa aleatória para evitar detecção
+        time.sleep(random.uniform(1, 3))
+        
+        resp = scraper.get(url, headers=headers, timeout=20)
+        
+        # Se der 403, tentar com requests + headers alternativos
+        if resp.status_code == 403:
+            st.warning(f"⚠️ Cloudscraper bloqueado para {url}. Tentando abordagem alternativa...")
+            
+            # Tentar com requests e headers diferentes
+            alt_headers = headers.copy()
+            alt_headers['User-Agent'] = random.choice(USER_AGENTS)
+            
+            resp = requests.get(url, headers=alt_headers, timeout=20)
+            
+            if resp.status_code == 403:
+                st.error(f"❌ Acesso negado para: {url}")
+                return "Conteúdo não acessível - erro 403 Forbidden"
+        
+        resp.raise_for_status()
+        
+        soup = BeautifulSoup(resp.content, 'html.parser')
+        
+        # Remover elementos desnecessários
+        for el in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form']):
+            el.decompose()
+            
+        # Tentar encontrar o conteúdo principal
+        content = (soup.select_one("article") or 
+                  soup.select_one("main") or 
+                  soup.select_one(".article-body") or
+                  soup.select_one(".article-content") or
+                  soup.select_one(".content"))
+        
+        if content:
+            # Remover elementos específicos do help center
+            for el in content.select('.article-attachments, .article-meta, .article-votes, .article-info, .comments'):
+                el.decompose()
+            text = content.get_text(separator=' ', strip=True)
+        else:
+            # Fallback: pegar todo o texto
+            text = soup.get_text(separator=' ', strip=True)
+            
+        return clean_text(text)[:6000]
+        
+    except requests.HTTPError as e:
+        if e.response.status_code == 403:
+            return f"Erro 403 - Acesso negado: {url}"
+        elif e.response.status_code == 404:
+            return f"Erro 404 - Página não encontrada: {url}"
+        else:
+            return f"Erro HTTP {e.response.status_code} ao acessar: {url}"
+    except Exception as e:
+        return f"Erro ao extrair conteúdo: {str(e)}"
+
 def pontuar_relevancia(texto: str, query: str) -> float:
     tokens_query = set(clean_query(query).split())
     tokens_texto = set(texto.lower().split())
@@ -355,8 +268,10 @@ def reclassificar_artigos_ia(artigos: List[Tuple[float, str, str]], query: str, 
         return artigos
     
     try:
+        # Preparar dados dos artigos para a IA
         artigos_info = []
         for score, url, conteudo in artigos:
+            # Extrair título do URL ou usar trecho do conteúdo
             titulo = url.split('/')[-1].replace('-', ' ')[:100]
             if conteudo and len(conteudo) > 50:
                 preview = conteudo[:200] + "..."
@@ -371,15 +286,18 @@ def reclassificar_artigos_ia(artigos: List[Tuple[float, str, str]], query: str, 
         else:
             resposta = reclassificar_openai(query, artigos_texto, modelo, api_key)
         
+        # Processar resposta da IA para extrair ordenação
         artigos_ordenados = processar_resposta_reclassificacao(resposta, artigos)
         
         if artigos_ordenados:
             return artigos_ordenados
         else:
+            # Fallback: ordenação original por score
             return sorted(artigos, reverse=True, key=lambda x: x[0])
             
     except Exception as e:
         st.error(f"Erro na reclassificação por IA: {e}")
+        # Fallback para ordenação por score básico
         return sorted(artigos, reverse=True, key=lambda x: x[0])
 
 def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: str) -> str:
@@ -450,19 +368,23 @@ def processar_resposta_reclassificacao(resposta_ia: str, artigos_originais: List
     if not resposta_ia:
         return []
     
+    # Extrair URLs da resposta
     urls_ordenados = []
     for linha in resposta_ia.split('\n'):
         linha = linha.strip()
         if linha.startswith('http'):
             urls_ordenados.append(linha)
     
+    # Criar mapa de artigos por URL
     artigo_por_url = {url: (score, url, conteudo) for score, url, conteudo in artigos_originais}
     
+    # Reordenar baseado na classificação da IA
     artigos_ordenados = []
     for url in urls_ordenados:
         if url in artigo_por_url:
             artigos_ordenados.append(artigo_por_url[url])
     
+    # Adicionar quaisquer artigos que não foram classificados pela IA
     urls_adicionados = set(urls_ordenados)
     for artigo in artigos_originais:
         if artigo[1] not in urls_adicionados:
@@ -470,9 +392,6 @@ def processar_resposta_reclassificacao(resposta_ia: str, artigos_originais: List
     
     return artigos_ordenados
 
-# ---------------------------
-# Formatação e Respostas
-# ---------------------------
 def formatar_links_saiba_mais(links: List[str]) -> str:
     """Formata os links para a seção Saiba Mais"""
     if not links:
@@ -490,13 +409,15 @@ def formatar_links_saiba_mais(links: List[str]) -> str:
                 break
         links_formatados.append(link_limpo)
     
+    # Remover duplicatas mantendo a ordem
     links_unicos = []
     for link in links_formatados:
         if link not in links_unicos:
             links_unicos.append(link)
     
+    # Formatar a seção Saiba Mais
     saiba_mais = "\n\n**🔗 Saiba mais:**\n"
-    for i, link in enumerate(links_unicos[:5], 1):
+    for i, link in enumerate(links_unicos[:5], 1):  # Limitar a 5 links
         saiba_mais += f"{i}. {link}\n"
     
     return saiba_mais
@@ -504,6 +425,7 @@ def formatar_links_saiba_mais(links: List[str]) -> str:
 def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, use_gemini: bool, api_key: str, temperatura: float):
     """Função unificada que escolhe entre Gemini e ChatGPT"""
     
+    # Filtrar contexto removendo mensagens de erro
     if "erro 403" in context.lower() or "acesso negado" in context.lower():
         context = "Conteúdo não disponível devido a restrições de acesso."
     
@@ -520,6 +442,7 @@ def get_gemini_response(query: str, context: str, fontes: List[str], model: str,
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
+        # Configurar generation config com temperatura
         generation_config = {
             "temperature": temperatura,
             "top_p": 0.0,
@@ -581,45 +504,42 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
         return f"Erro ao gerar resposta com OpenAI: {e}"
 
 # ---------------------------
-# Verificação de Status do Site
+# Interface Streamlit
 # ---------------------------
-def verificar_status_site():
-    """Verifica o status do site e possíveis bloqueios"""
-    test_url = "https://centraldeatendimento.totvs.com/hc/pt-br"
-    
-    try:
-        headers = get_totvs_headers()
-        response = requests.get(test_url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            st.success("✅ Site da TOTVS está acessível")
-            return True
-        elif response.status_code == 403:
-            st.error("❌ Site está bloqueando acesso automático")
-            st.info("💡 **Soluções:** Tente novamente em alguns minutos ou use uma rede diferente")
-            return False
-        else:
-            st.warning(f"⚠️ Site retornou status {response.status_code}")
-            return False
-            
-    except Exception as e:
-        st.error(f"🔌 Erro de conexão: {e}")
-        return False
+def inicializar_session_state():
+    """Inicializa as variáveis de session state"""
+    if 'min_score' not in st.session_state:
+        st.session_state.min_score = 0.5
+    if 'use_gemini' not in st.session_state:
+        st.session_state.use_gemini = True
+    if 'modelo' not in st.session_state:
+        st.session_state.modelo = "gemini-1.5-flash"
+    if 'api_key' not in st.session_state:
+        st.session_state.api_key = ""
+    if 'temperatura' not in st.session_state:
+        st.session_state.temperatura = 0.0
+    if 'mostrar_codigo' not in st.session_state:
+        st.session_state.mostrar_codigo = False
+    if 'reclassificar_ia' not in st.session_state:
+        st.session_state.reclassificar_ia = True  # Nova opção
 
-# ---------------------------
-# Processamento Principal
-# ---------------------------
+def atualizar_lista_modelos():
+    """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
+    if st.session_state.use_gemini:
+        modelos_disponiveis = ["gemini-2.5-flash","gemini-2.5-pro","gemini-2.0-pro","gemini-2.0-flash","gemini-1.5-pro"]
+        if not st.session_state.modelo.startswith("gemini"):
+            st.session_state.modelo = "gemini-1.5-flash"
+    else:
+        modelos_disponiveis = ["gpt-5","gpt-5-mini","gpt-5-nano","gpt-4.1","gpt-4.1-mini","gpt-4.1-nano","gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
+        if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
+            st.session_state.modelo = "gpt-4o-mini"
+    return modelos_disponiveis
+
 def processar_pergunta(user_query: str):
     """Processa a pergunta do usuário e retorna a resposta"""
-    
+    # Verificar se a API key foi configurada
     if not st.session_state.api_key:
         return "Erro: Chave da API não configurada. Por favor, configure sua chave na sidebar."
-    
-    # Verificar status do site
-    with st.status("Verificando acesso ao site...") as status:
-        status.write("🔍 Testando conexão com a TOTVS...")
-        if not verificar_status_site():
-            return "❌ **Problema de acesso detectado:** O site da TOTVS está bloqueando nosso acesso no momento. Tente:\n\n1. Aguardar alguns minutos\n2. Tentar novamente mais tarde\n3. Usar uma rede diferente"
     
     cleaned_query = clean_query(user_query)
     if not cleaned_query:
@@ -632,7 +552,7 @@ def processar_pergunta(user_query: str):
         # Buscar links
         with st.status("Buscando na documentação TOTVS...", expanded=True) as status:
             status.write("🔍 Procurando artigos relevantes...")
-            links = buscar_documentacao_totvs(user_query, max_links=5)
+            links = buscar_documentacao_totvs(user_query, max_links=5)  # Buscar mais links
             
             if not links:
                 return "Não foram encontrados artigos relevantes na documentação TOTVS."
@@ -658,13 +578,16 @@ def processar_pergunta(user_query: str):
                     st.session_state.modelo
                 )
             else:
+                # Ordenação tradicional por score
                 contexto_scores.sort(reverse=True, key=lambda x: x[0])
             
             status.write("🤖 Gerando resposta com IA...")
             
+            # Usar os 3 artigos mais relevantes para o contexto
             artigos_relevantes = contexto_scores[:3]
             contexto_combinado = "\n\n".join([conteudo for _, _, conteudo in artigos_relevantes if conteudo.strip()])
             
+            # Gerar resposta
             if not contexto_combinado.strip():
                 resposta_final = "Atenção: não foi possível validar essa informação específica na documentação oficial."
             elif contexto_scores[0][0] < st.session_state.min_score:
@@ -689,6 +612,7 @@ def processar_pergunta(user_query: str):
                     st.session_state.temperatura
                 )
             
+            # Adicionar seção "Saiba mais" se a resposta for válida
             mensagens_erro = [
                 "não foi possível validar essa informação específica",
                 "não encontrei essa informação na documentação oficial",
@@ -698,7 +622,7 @@ def processar_pergunta(user_query: str):
             resposta_valida = not any(erro in resposta_final.lower() for erro in mensagens_erro)
             
             if resposta_valida and links:
-                saiba_mais = formatar_links_saiba_mais([link for _, link, _ in contexto_scores[:5]])
+                saiba_mais = formatar_links_saiba_mais([link for _, link, _ in contexto_scores[:5]])  # Top 5 links
                 resposta_final += saiba_mais
             
             status.update(label="Processamento completo!", state="complete")
@@ -708,38 +632,6 @@ def processar_pergunta(user_query: str):
     except Exception as e:
         return f"Ocorreu um erro durante o processamento: {str(e)}"
 
-# ---------------------------
-# Interface Streamlit
-# ---------------------------
-def inicializar_session_state():
-    """Inicializa as variáveis de session state"""
-    if 'min_score' not in st.session_state:
-        st.session_state.min_score = 0.3  # Reduzido para ser menos restritivo
-    if 'use_gemini' not in st.session_state:
-        st.session_state.use_gemini = True
-    if 'modelo' not in st.session_state:
-        st.session_state.modelo = "gemini-1.5-flash"
-    if 'api_key' not in st.session_state:
-        st.session_state.api_key = ""
-    if 'temperatura' not in st.session_state:
-        st.session_state.temperatura = 0.0
-    if 'mostrar_codigo' not in st.session_state:
-        st.session_state.mostrar_codigo = False
-    if 'reclassificar_ia' not in st.session_state:
-        st.session_state.reclassificar_ia = True
-
-def atualizar_lista_modelos():
-    """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
-    if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-pro"]
-        if not st.session_state.modelo.startswith("gemini"):
-            st.session_state.modelo = "gemini-1.5-flash"
-    else:
-        modelos_disponiveis = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo", "gpt-4", "gpt-4-turbo"]
-        if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
-            st.session_state.modelo = "gpt-4o-mini"
-    return modelos_disponiveis
-
 def main():
     # Inicializar session state
     inicializar_session_state()
@@ -748,31 +640,30 @@ def main():
     with st.sidebar:
         st.header("⚙️ Configurações")
         
-        # Configurações de IA
+        # Checkbox para escolher entre Gemini e OpenAI
         st.session_state.use_gemini = st.checkbox(
             "Usar Google Gemini",
             value=st.session_state.use_gemini,
             help="Desmarque para usar OpenAI"
         )
         
+        # Lista de modelos atualizada
         modelos_disponiveis = atualizar_lista_modelos()
         
-        # Configurações de Acesso
-        st.subheader("🎯 Configurações de Acesso")
-        
+        # Configurações avançadas
         st.session_state.reclassificar_ia = st.checkbox(
             "🧠 Reclassificação Inteligente por IA",
             value=st.session_state.reclassificar_ia,
-            help="Usa IA para reordenar artigos por relevância"
+            help="Usa IA para reordenar artigos por relevância (recomendado)"
         )
         
         st.session_state.min_score = st.slider(
-            "Score Mínimo de Relevância",
+            "🎯 Score Mínimo de Relevância",
             min_value=0.0,
             max_value=1.0,
             value=st.session_state.min_score,
             step=0.1,
-            help="Score mais baixo = mais resultados (recomendado: 0.2-0.4)"
+            help="Quanto maior o score, mais relevante precisa ser o conteúdo"
         )
         
         st.session_state.temperatura = st.slider(
@@ -781,10 +672,21 @@ def main():
             max_value=1.0,
             value=st.session_state.temperatura,
             step=0.1,
-            help="Valores mais baixos = respostas mais focadas"
+            help="Valores mais baixos = respostas mais focadas e determinísticas\nValores mais altos = respostas mais criativas e variadas"
         )
         
-        # Modelo e API
+        # Explicação da temperatura
+        with st.expander("💡 Sobre a Temperatura"):
+            st.markdown("""
+            **Como a temperatura afeta as respostas:**
+            
+            - **0.0 - 0.3**: Respostas muito focadas e consistentes
+            - **0.4 - 0.7**: Equilíbrio entre criatividade e precisão  
+            - **0.8 - 1.0**: Respostas mais criativas e variadas
+            
+            *Recomendado: 0.1-0.3 para suporte técnico*
+            """)
+        
         st.session_state.modelo = st.selectbox(
             "🤖 Modelo de IA",
             options=modelos_disponiveis,
@@ -799,13 +701,25 @@ def main():
             help="Obtenha sua chave em: https://aistudio.google.com/ (Gemini) ou https://platform.openai.com/ (OpenAI)"
         )
         
-        # Dicas de uso
+        # Indicador visual da temperatura
+        col_temp1, col_temp2, col_temp3 = st.columns(3)
+        with col_temp1:
+            if st.session_state.temperatura <= 0.3:
+                st.metric("Estilo", "Preciso", delta="Focado")
+        with col_temp2:
+            if 0.4 <= st.session_state.temperatura <= 0.7:
+                st.metric("Estilo", "Balanceado", delta="Equilibrado")
+        with col_temp3:
+            if st.session_state.temperatura >= 0.8:
+                st.metric("Estilo", "Criativo", delta="Variado")
+        
         st.markdown("---")
         st.info("""
-        **💡 Dicas para melhor acesso:**
-        - Score 0.2-0.4 para mais resultados
-        - Temperatura 0.1-0.3 para precisão
-        - Aguarde entre tentativas se houver bloqueio
+        **💡 Dicas:**
+        - Faça perguntas específicas sobre o ERP Protheus
+        - Configure sua chave de API para usar o assistente
+        - Ajuste a temperatura conforme sua necessidade
+        - Ative a reclassificação IA para respostas mais precisas
         """)
         
         st.markdown("---")
@@ -860,17 +774,21 @@ def main():
         col_controls1, col_controls2, col_controls3 = st.columns([2, 1, 1])
         
         with col_controls1:
+            # Toggle entre visualização normal e código
             if st.button("📄 Visualizar como Código" if not st.session_state.mostrar_codigo else "📝 Visualizar Normal", 
                         key="toggle_view", use_container_width=True):
                 st.session_state.mostrar_codigo = not st.session_state.mostrar_codigo
                 st.rerun()
         
         with col_controls2:
+            # Botão para copiar (usando st.code que tem cópia nativa)
             if st.button("📋 Copiar Resposta", key="copy_btn", use_container_width=True):
+                # Mostrar a resposta em formato código que permite cópia fácil
                 st.session_state.mostrar_codigo = True
                 st.success("✅ Use Ctrl+C para copiar o texto acima!")
         
         with col_controls3:
+            # Botão para baixar
             if st.button("💾 Baixar", key="download_btn", use_container_width=True):
                 st.download_button(
                     label="📥 Clique para baixar",
@@ -882,9 +800,11 @@ def main():
         
         # Exibir a resposta
         if st.session_state.mostrar_codigo:
+            # Modo código - fácil de copiar
             st.code(st.session_state.resposta, language="text", line_numbers=False)
             st.info("💡 **Dica:** Selecione o texto acima e use Ctrl+C para copiar")
         else:
+            # Modo normal - melhor visualização
             st.write(st.session_state.resposta)
 
 if __name__ == "__main__":
