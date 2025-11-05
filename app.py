@@ -454,10 +454,15 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
             with DDGS() as ddgs:
                 for r in ddgs.text(search_query, max_results=10):
                     url = r.get("href", "")
-                    if (url.startswith("https://centraldeatendimento.totvs.com") 
-                        and "/articles/" in url 
-                        and "/protheus/" in url.lower()  # <=== força Protheus
-                        and url not in seen):
+                    if (
+                        url.startswith("https://centraldeatendimento.totvs.com")
+                        and "/articles/" in url
+                        and "protheus" in url.lower()  # <=== força Protheus
+                        and url not in seen
+                    ):
+                        found.append(url)
+                        seen.add(url)
+    
                     if len(found) >= max_links:
                         break
         except Exception as e:
