@@ -595,7 +595,7 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
         """
         
         # Usar modelo mais estável
-        if model not in ["gemini-pro", "gemini-2.5-pro"]:
+        if model not in ["gemini-2.5-flash", "gemini-2.5-pro"]:
             model = "gemini-pro"
             
         gemini_model = genai.GenerativeModel(
@@ -769,8 +769,8 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
         }
         
         # Usar modelo mais estável
-        if model not in ["gemini-pro", "gemini-2.5-pro"]:
-            model = "gemini-pro"
+        if model not in ["gemini-2.5-flash", "gemini-2.5-pro"]:
+            model = "gemini-2.5-flash"
         
         gemini_model = genai.GenerativeModel(
             model_name=model,
@@ -845,7 +845,7 @@ def inicializar_session_state():
     defaults = {
         'min_score': 0.3,
         'use_gemini': True,
-        'modelo': "gemini-pro", 
+        'modelo': "gemini-2.5-flash", 
         'api_key': "",
         'temperatura': 0.1,
         'mostrar_codigo': False,
@@ -861,9 +861,9 @@ def inicializar_session_state():
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
     if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-pro", "gemini-2.5-pro"]
+        modelos_disponiveis = ["gemini-2.5-flash", "gemini-2.5-pro"]
         if st.session_state.modelo not in modelos_disponiveis:
-            st.session_state.modelo = "gemini-pro"
+            st.session_state.modelo = "gemini-2.5-flash"
     else:
         modelos_disponiveis = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
         if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
