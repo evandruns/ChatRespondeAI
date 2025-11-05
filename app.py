@@ -783,6 +783,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
             "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\".\n"
             "- Seja objetivo e inclua passos acionáveis quando aplicável.\n"
             "- NÃO inclua a seção 'Fontes consultadas' no final - isso será adicionado automaticamente.\n"
+            "- As documetações devem ser somente sobre o Protheus. \n"
         )
 
         user_content = (
@@ -819,6 +820,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
             "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\".\n"
             "- Seja objetivo e inclua passos acionáveis quando aplicável.\n"
             "- NÃO inclua a seção 'Fontes consultadas' no final - isso será adicionado automaticamente.\n"
+            "- As documetações devem ser somente sobre o Protheus. \n"
         )
         
         user_content = f"PERGUNTA DO USUÁRIO:\n{query}\n\nCONTEÚDO EXTRAÍDO:\n{context}\n\nFontes disponíveis:\n" + "\n".join(fontes)
