@@ -301,7 +301,7 @@ def tem_video_ou_anexo(query: str) -> bool:
     """Verifica se a query se refere a conteúdo multimídia"""
     padroes = [
         r"\banexo\b", r"\banexos\b", r"\banexado\b", r"\banexada\b",
-        r"\bv[íi]deo\b", r"\bv[íi]deos\b", r"\bgravaç[ãa]o\b",
+        r"\bv[íi]deo\b", r"\bv[íi]deos\b"
         r"\bprint\b", r"\bimagem\b", r"\bscreenshot\b", r"\bfoto\b",
         r"\bpdf\b", r"\barquivo\b", r"\bdownload\b"
     ]
