@@ -449,25 +449,20 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
     
     # Estratégia 2: DuckDuckGo
 
-    ALLOWED_DOMAINS = [
-    "https://centraldeatendimento.totvs.com",
-    "https://tdn.totvs.com.br",
-    ]
-    if len(found) < max_links:
-        try:
-            search_query = f"site:centraldeatendimento.totvs.com {cleaned}"
-            with DDGS() as ddgs:
-                for r in ddgs.text(search_query, max_results=10):
-                    url = r.get("href", "")
-                    if (
-                        any(url.startswith(dom) for dom in ALLOWED_DOMAINS)
-                        and "protheus" in url.lower()
-                        and url not in seen
-                    ):
-                        found.append(url)
-                        seen.add(url)    
-                    if len(found) >= max_links:
-                        break
+    with DDGS() as ddgs:
+        for r in ddgs.text(search_query, max_results=10):
+            url = r.get("href", "")
+            if (
+                url.startswith("https://centraldeatendimento.totvs.com")
+                and "/articles/" in url
+                and "protheus" in url.lower()
+                and url not in seen
+            ):
+                found.append(url)
+                seen.add(url)
+    
+            if len(found) >= max_links:
+                break
         except Exception as e:
             pass
     
