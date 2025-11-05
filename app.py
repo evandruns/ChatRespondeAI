@@ -699,7 +699,7 @@ def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, us
         context = "Conteúdo não disponível devido a restrições de acesso."
     
     if not context or not context.strip() or context == "Conteúdo não disponível devido a restrições de acesso.":
-        return "Não encontrei essa informação na documentação oficial devido a restrições de acesso."
+        return "Não encontrei informações específicas sobre isso na documentação oficial."
 
     try:
         if use_gemini:
@@ -715,11 +715,10 @@ def get_gemini_response_sintetico(query: str, context: str, fontes: List[str], m
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
+        # Configuração simplificada
         generation_config = {
             "temperature": min(temperatura, 0.3),
-            "top_p": 0.8,
-            "top_k": 40,
-            "max_output_tokens": 1000,
+            "max_output_tokens": 800,
         }
         
         # Usar modelo mais estável
@@ -731,35 +730,34 @@ def get_gemini_response_sintetico(query: str, context: str, fontes: List[str], m
             generation_config=generation_config
         )
         
+        # Prompt mais simples e direto
         prompt = f"""
-        Você é um especialista em ERP Protheus da TOTVS. Forneça uma resposta SINTÉTICA e DIRETA baseada no contexto abaixo.
+        Com base no contexto abaixo, forneça uma resposta técnica resumida sobre: {query}
 
-        PERGUNTA: {query}
+        Contexto:
+        {context[:6000]}
 
-        CONTEXTO DA DOCUMENTAÇÃO:
-        {context}
-
-        FORMATO DA RESPOSTA:
-        - Seja conciso (máximo 2-3 parágrafos)
-        - Destaque apenas os pontos principais
-        - Use linguagem técnica mas acessível
-        - Se não encontrar informação suficiente, diga "Não encontrei informações detalhadas sobre isso na documentação"
-        - Não inclua saudações ou despedidas
-        - Foque na informação essencial
-
-        RESPOSTA SINTÉTICA:
+        Instruções:
+        - Seja conciso (máximo 150-200 palavras)
+        - Foque nos pontos principais
+        - Use linguagem técnica clara
+        - Se não houver informação suficiente, diga apenas "Não encontrei informações detalhadas sobre isso"
         """
-        
+
         response = gemini_model.generate_content(prompt)
         
-        # Tratamento robusto da resposta
-        if response and response.text:
-            return response.text.strip()
+        # Tratamento mais robusto da resposta
+        if hasattr(response, 'text') and response.text:
+            texto_resposta = response.text.strip()
+            if texto_resposta:
+                return texto_resposta
+            else:
+                return "Não foi possível gerar uma resposta para esta consulta."
         else:
-            return "Não foi possível gerar uma resposta para esta consulta."
+            return "Não encontrei informações suficientes na documentação para responder esta pergunta."
         
     except Exception as e:
-        return f"Erro ao processar a solicitação: {str(e)}"
+        return f"Erro técnico: {str(e)}"
 
 def get_chatgpt_response_sintetico(query: str, context: str, fontes: List[str], model: str, api_key: str, temperatura: float):
     """Versão sintética do ChatGPT - respostas curtas e diretas"""
@@ -768,34 +766,30 @@ def get_chatgpt_response_sintetico(query: str, context: str, fontes: List[str], 
         client = OpenAI(api_key=api_key)
         
         prompt = f"""
-        Você é um especialista em ERP Protheus da TOTVS. Forneça uma resposta SINTÉTICA e DIRETA baseada no contexto abaixo.
+        Com base no contexto abaixo, forneça uma resposta técnica resumida sobre: {query}
 
-        PERGUNTA: {query}
+        Contexto:
+        {context[:6000]}
 
-        CONTEXTO DA DOCUMENTAÇÃO:
-        {context}
-
-        INSTRUÇÕES:
-        - Seja conciso (máximo 2-3 parágrafos)
-        - Destaque apenas os pontos principais
-        - Use linguagem técnica mas acessível
-        - Se não encontrar informação suficiente, diga "Não encontrei informações detalhadas sobre isso na documentação"
-        - Não inclua saudações ou despedidas
-        - Foque na informação essencial
+        Instruções:
+        - Seja conciso (máximo 150-200 palavras)
+        - Foque nos pontos principais
+        - Use linguagem técnica clara
+        - Se não houver informação suficiente, diga apenas "Não encontrei informações detalhadas sobre isso"
         """
 
         resp = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": "Você é um especialista técnico em ERP Protheus da TOTVS. Forneça respostas sintéticas e diretas."},
+                {"role": "system", "content": "Você é um especialista técnico em ERP Protheus da TOTVS."},
                 {"role": "user", "content": prompt},
             ],
             temperature=min(temperatura, 0.3),
-            max_tokens=800,
+            max_tokens=600,
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
-        return f"Erro ao gerar resposta com OpenAI: {e}"
+        return f"Erro ao gerar resposta: {e}"
 
 # ---------------------------
 # INTERFACE STREAMLIT MELHORADA
@@ -899,10 +893,10 @@ def processar_pergunta(user_query: str):
             
             # Gerar resposta
             if not contexto_combinado.strip():
-                resposta_final = "Atenção: não foi possível validar essa informação específica na documentação oficial."
+                resposta_final = "Não encontrei informações específicas sobre isso na documentação oficial."
             elif contexto_scores[0][0] < st.session_state.min_score:
-                resposta_final = "**Observação:** Esta consulta aborda um ponto não detalhado na documentação. A resposta é baseada em conhecimento geral.\n\n"
-                resposta_final += get_ai_response(
+                resposta_final = "**Observação:** Esta consulta aborda um ponto não detalhado na documentação.\n\n"
+                resposta_ia = get_ai_response(
                     user_query, 
                     contexto_combinado, 
                     [link for _, link, _ in artigos_relevantes], 
@@ -911,6 +905,7 @@ def processar_pergunta(user_query: str):
                     st.session_state.api_key,
                     st.session_state.temperatura
                 )
+                resposta_final += resposta_ia
             else:
                 resposta_final = get_ai_response(
                     user_query, 
@@ -924,11 +919,10 @@ def processar_pergunta(user_query: str):
             
             # Adicionar seção "Saiba mais" se a resposta for válida
             mensagens_erro = [
-                "não foi possível validar essa informação específica",
-                "não encontrei essa informação na documentação oficial",
-                "conteúdo não disponível devido a restrições de acesso",
+                "não encontrei informações",
                 "erro ao processar",
-                "não foi possível gerar"
+                "não foi possível gerar",
+                "erro técnico"
             ]
             
             resposta_valida = not any(erro in resposta_final.lower() for erro in mensagens_erro)
