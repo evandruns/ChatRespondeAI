@@ -457,7 +457,6 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
                     if (
                         url.startswith("https://centraldeatendimento.totvs.com")
                         and "/articles/" in url
-                        and "protheus" in url.lower()  # <=== força Protheus
                         and url not in seen
                     ):
                         found.append(url)
