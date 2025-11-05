@@ -603,7 +603,7 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
             safety_settings=safety_settings,
             generation_config={
                 "temperature": 0.0,
-                "max_output_tokens": 500,
+                "max_output_tokens": 2000,
             }
         )
         
@@ -765,7 +765,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
             "temperature": min(temperatura, 0.7),  # Limitar temperatura para evitar problemas
             "top_p": 0.8,
             "top_k": 40,
-            "max_output_tokens": 2048,  # AUMENTADO: de 1024 para 2048 tokens
+            "max_output_tokens": 3600,  # AUMENTADO: de 1024 para 3600 tokens
         }
         
         # Usar modelo mais estável
@@ -834,7 +834,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
                 {"role": "user", "content": user_content},
             ],
             temperature=temperatura,
-            max_tokens=2000,  # AUMENTADO: de 512 para 2000 tokens
+            max_tokens=3060,  # AUMENTADO: de 512 para 3060 tokens
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
