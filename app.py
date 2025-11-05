@@ -16,6 +16,7 @@ from datetime import datetime
 # ---------------------------
 # Configuração Inicial
 # ---------------------------
+
 st.set_page_config(
     page_title="Responde AI TOTVS",
     page_icon="🤖",
@@ -26,11 +27,12 @@ st.set_page_config(
 # ---------------------------
 # SISTEMA DE CACHE PARA MELHOR PERFORMANCE
 # ---------------------------
+
 class CacheManager:
     def __init__(self, ttl=3600):  # 1 hora de cache
         self.cache = {}
         self.ttl = ttl
-    
+
     def get(self, key):
         if key in self.cache:
             data, timestamp = self.cache[key]
@@ -39,10 +41,10 @@ class CacheManager:
             else:
                 del self.cache[key]
         return None
-    
+
     def set(self, key, value):
         self.cache[key] = (value, time.time())
-    
+
     def clear(self):
         self.cache.clear()
 
@@ -51,6 +53,7 @@ cache = CacheManager()
 # ---------------------------
 # HEADERS MELHORADOS COM ROTAÇÃO DINÂMICA
 # ---------------------------
+
 def get_dynamic_headers(url=None):
     """Retorna headers dinâmicos e realistas"""
     user_agents = [
@@ -85,6 +88,7 @@ def get_dynamic_headers(url=None):
 # ---------------------------
 # SISTEMA DE REQUISIÇÕES ROBUSTO
 # ---------------------------
+
 def create_advanced_scraper():
     """Cria um scraper avançado com retry automático"""
     try:
@@ -109,14 +113,14 @@ def fazer_requisicao_inteligente(url, max_tentativas=3):
     cached = cache.get(cache_key)
     if cached:
         return cached
-    
+
     for tentativa in range(max_tentativas):
         try:
             # Delay progressivo entre tentativas
             if tentativa > 0:
                 delay = tentativa * 2 + random.uniform(1, 3)
                 time.sleep(delay)
-            
+
             headers = get_dynamic_headers(url)
             
             # Tentar com CloudScraper primeiro
@@ -128,7 +132,7 @@ def fazer_requisicao_inteligente(url, max_tentativas=3):
                 if not any(term in content_lower for term in ['access denied', 'blocked', 'bot detected', 'captcha']):
                     cache.set(cache_key, response)
                     return response
-            
+
             # Se falhou, tentar com requests simples
             session = requests.Session()
             alt_headers = headers.copy()
@@ -148,23 +152,23 @@ def fazer_requisicao_inteligente(url, max_tentativas=3):
             continue
         except Exception as e:
             continue
-    
+
     return None
 
 # ---------------------------
 # SISTEMA DE BUSCA APRIMORADO
 # ---------------------------
+
 def buscar_via_api_zendesk(query, max_results=5):
     """Busca usando a API oficial do Zendesk (método mais confiável)"""
     cache_key = f"api_search_{hash(query)}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-    
+
     try:
         base_url = "https://centraldeatendimento.totvs.com/api/v2/help_center/pt-br/articles/search"
         params = {'query': query, 'per_page': max_results}
-        
         headers = get_dynamic_headers()
         headers['accept'] = 'application/json'
         
@@ -173,7 +177,6 @@ def buscar_via_api_zendesk(query, max_results=5):
         if response.status_code == 200:
             data = response.json()
             articles = data.get('results', [])
-            
             links = []
             for article in articles:
                 url = article.get('html_url')
@@ -182,11 +185,56 @@ def buscar_via_api_zendesk(query, max_results=5):
             
             cache.set(cache_key, links)
             return links
-            
     except Exception as e:
         pass
     
     return []
+
+def buscar_tdn_totvs(query: str, max_links: int = 3) -> List[str]:
+    """Busca específica no TDN (Totvs Developer Network)"""
+    cache_key = f"tdn_search_{hash(query)}"
+    cached = cache.get(cache_key)
+    if cached:
+        return cached
+    
+    cleaned = clean_query(query)
+    if not cleaned:
+        return []
+    
+    links = []
+    try:
+        # URL de busca do TDN com filtro para Protheus
+        tdn_url = f"https://tdn.totvs.com.br/dosearchsite.action?cql=siteSearch+~+%22{urllib.parse.quote(cleaned)}%22+AND+%28space+%3D+%22Protheus%22%29&queryString={urllib.parse.quote(cleaned)}"
+        
+        response = fazer_requisicao_inteligente(tdn_url)
+        if response and response.status_code == 200:
+            soup = BeautifulSoup(response.content, 'html.parser')
+            
+            # Extrair links dos resultados do TDN
+            result_selectors = [
+                "a[href*='/pages/viewpage.action']",
+                ".search-result-item a",
+                ".search-results a",
+                ".title a"
+            ]
+            
+            for selector in result_selectors:
+                for a in soup.select(selector):
+                    href = a.get('href', '')
+                    if href and '/pages/viewpage.action' in href:
+                        full_url = f"https://tdn.totvs.com.br{href}" if href.startswith('/') else href
+                        if full_url not in links:
+                            links.append(full_url)
+                            if len(links) >= max_links:
+                                break
+                if len(links) >= max_links:
+                    break
+                    
+    except Exception as e:
+        st.warning(f"Busca TDN não disponível: {e}")
+    
+    cache.set(cache_key, links)
+    return links[:max_links]
 
 def extrair_conteudo_via_api(url):
     """Extrai conteúdo via API - método mais confiável"""
@@ -206,16 +254,14 @@ def extrair_conteudo_via_api(url):
         if response.status_code == 200:
             data = response.json()
             article = data.get('article', {})
-            
             body = article.get('body', '')
             title = article.get('title', '')
             
             soup = BeautifulSoup(body, 'html.parser')
             text = soup.get_text(separator=' ', strip=True)
-            
             full_content = f"{title}\n\n{text}"
-            return clean_text(full_content)[:10000]  # Aumentado para 10000 caracteres
             
+            return clean_text(full_content)[:10000]  # Aumentado para 10000 caracteres
     except Exception:
         pass
     
@@ -224,19 +270,20 @@ def extrair_conteudo_via_api(url):
 # ---------------------------
 # STOP WORDS E PRÉ-PROCESSAMENTO (MELHORADO)
 # ---------------------------
+
 STOP_WORDS = {
-    "bom dia", "boa tarde", "boa noite", "olá", "att", "atenciosamente",
+    "bom dia", "boa tarde", "boa noite", "olá", "att", "atenciosamente", 
     "obrigado", "obrigada", "prezado", "prezada", "caro", "cara", 
-    "senhor", "senhora", "ola", "oi", "saudações", "tudo bem", "tudo bem?",
+    "senhor", "senhora", "ola", "oi", "saudações", "tudo bem", "tudo bem?", 
     "amigo", "amiga", "por favor", "grato", "grata", "cordialmente", 
-    "abraço", "abs", "ok", "entendi", "obg", "vlw", "por favor", 
-    "favor", "gostaria", "queria", "saber"
+    "abraço", "abs", "ok", "entendi", "obg", "vlw", "por favor", "favor", 
+    "gostaria", "queria", "saber"
 }
 
 PALAVRAS_TECNICAS = {
-    'erp', 'sql', 'api', 'xml', 'json', 'tss', 'nt', 'danfe', 'nfe', 'cte',
-    'mde', 'sped', 'ecd', 'ecf', 'efd', 'protheus', 'fluig', 'rm', 'log',
-    'fis', 'fat', 'crm', 'com', 'tms', 'wms', 'bi', 'linx', 'datasul',
+    'erp', 'sql', 'api', 'xml', 'json', 'tss', 'nt', 'danfe', 'nfe', 'cte', 
+    'mde', 'sped', 'ecd', 'ecf', 'efd', 'protheus', 'fluig', 'rm', 'log', 
+    'fis', 'fat', 'crm', 'com', 'tms', 'wms', 'bi', 'linx', 'datasul', 
     'configurar', 'parâmetro', 'erro', 'funcionalidade', 'módulo', 'instalação'
 }
 
@@ -252,7 +299,6 @@ def clean_query(query: str) -> str:
     # Remover stop words mas manter palavras técnicas
     parts = query.split()
     keep = []
-    
     for p in parts:
         p_clean = p.strip()
         if (p_clean not in STOP_WORDS and len(p_clean) >= 2) or p_clean in PALAVRAS_TECNICAS:
@@ -260,8 +306,7 @@ def clean_query(query: str) -> str:
     
     # Adicionar "Protheus" se não estiver presente e for uma consulta técnica
     if keep and "protheus" not in " ".join(keep).lower():
-        termos_tecnicos = any(term in " ".join(keep).lower() for term in 
-                            ['configurar', 'parâmetro', 'erro', 'funcionalidade', 'módulo', 'instalação'])
+        termos_tecnicos = any(term in " ".join(keep).lower() for term in ['configurar', 'parâmetro', 'erro', 'funcionalidade', 'módulo', 'instalação'])
         if termos_tecnicos:
             keep.append("protheus")
     
@@ -301,9 +346,9 @@ def tem_video_ou_anexo(query: str) -> bool:
     """Verifica se a query se refere a conteúdo multimídia"""
     padroes = [
         r"\banexo\b", r"\banexos\b", r"\banexado\b", r"\banexada\b",
-        r"\bv[íi]deo\b", r"\bv[íi]deos\b"
-        r"\bprint\b", r"\bimagem\b", r"\bscreenshot\b", r"\bfoto\b",
-        r"\bpdf\b", r"\barquivo\b", r"\bdownload\b"
+        r"\bv[íi]deo\b", r"\bv[íi]deos\b" r"\bprint\b", r"\bimagem\b", 
+        r"\bscreenshot\b", r"\bfoto\b", r"\bpdf\b", r"\barquivo\b", 
+        r"\bdownload\b"
     ]
     query_lower = query.lower()
     return any(re.search(p, query_lower) for p in padroes)
@@ -311,42 +356,28 @@ def tem_video_ou_anexo(query: str) -> bool:
 # ---------------------------
 # SISTEMA DE EXTRAÇÃO MELHORADO
 # ---------------------------
-def extrair_conteudo_pagina(url: str) -> str:
-    """Extrai conteúdo com múltiplas estratégias"""
-    if '/search?' in url:
-        return "Página de pesquisa - conteúdo não extraído"
 
-    # Tentar via API primeiro (método mais confiável)
-    conteudo_api = extrair_conteudo_via_api(url)
-    if conteudo_api:
-        return conteudo_api
-
-    # Fallback para scraping tradicional
+def extrair_conteudo_tdn(url: str) -> str:
+    """Extrai conteúdo das páginas do TDN"""
     try:
         response = fazer_requisicao_inteligente(url)
-        
-        if not response:
+        if not response or response.status_code != 200:
             return f"❌ Não foi possível acessar: {url}"
-            
-        if response.status_code != 200:
-            return f"Erro HTTP {response.status_code}: {url}"
-
+        
         soup = BeautifulSoup(response.content, 'html.parser')
         
         # Remover elementos desnecessários
         for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form', 'iframe']):
             element.decompose()
         
-        # Estratégias de seleção melhoradas
+        # Estratégias de seleção para TDN
         content_selectors = [
-            "article",
-            ".article-body",
-            ".article-content", 
-            "main",
-            ".content",
-            ".post-content",
-            "[role='main']",
-            ".help-center-content"
+            "#main-content",
+            ".wiki-content",
+            ".page-content",
+            "#content",
+            ".article-content",
+            "main"
         ]
         
         content = None
@@ -355,14 +386,82 @@ def extrair_conteudo_pagina(url: str) -> str:
             if content:
                 break
         
+        # Limpar elementos específicos do TDN
+        if content:
+            cleanup_selectors = [
+                '.page-metadata',
+                '.breadcrumbs',
+                '.page-actions',
+                '.comments',
+                '.attachments',
+                '.related-pages'
+            ]
+            for selector in cleanup_selectors:
+                for element in content.select(selector):
+                    element.decompose()
+            
+            text = content.get_text(separator=' ', strip=True)
+        else:
+            # Fallback para o corpo da página
+            body = soup.find('body')
+            text = body.get_text(separator=' ', strip=True) if body else soup.get_text(separator=' ', strip=True)
+        
+        cleaned_text = clean_text(text)
+        return cleaned_text[:10000] if cleaned_text else "Conteúdo TDN não encontrado"
+        
+    except Exception as e:
+        return f"Erro na extração TDN: {str(e)}"
+
+def extrair_conteudo_pagina(url: str) -> str:
+    """Extrai conteúdo com múltiplas estratégias incluindo TDN"""
+    if '/search?' in url:
+        return "Página de pesquisa - conteúdo não extraído"
+    
+    # Identificar se é URL do TDN
+    if 'tdn.totvs.com.br' in url:
+        return extrair_conteudo_tdn(url)
+    
+    # Tentar via API primeiro (método mais confiável)
+    if 'centraldeatendimento.totvs.com' in url:
+        conteudo_api = extrair_conteudo_via_api(url)
+        if conteudo_api:
+            return conteudo_api
+
+    # Fallback para scraping tradicional
+    try:
+        response = fazer_requisicao_inteligente(url)
+        if not response:
+            return f"❌ Não foi possível acessar: {url}"
+        
+        if response.status_code != 200:
+            return f"Erro HTTP {response.status_code}: {url}"
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        
+        # Remover elementos desnecessários
+        for element in soup(['script', 'style', 'nav', 'footer', 'header', 'aside', 'form', 'iframe']):
+            element.decompose()
+
+        # Estratégias de seleção melhoradas
+        content_selectors = [
+            "article", ".article-body", ".article-content", "main", 
+            ".content", ".post-content", "[role='main']", 
+            ".help-center-content", "#main-content", ".wiki-content"
+        ]
+        
+        content = None
+        for selector in content_selectors:
+            content = soup.select_one(selector)
+            if content:
+                break
+
         # Limpar elementos específicos
         if content:
             cleanup_selectors = [
-                '.article-meta', '.article-info', '.article-votes',
-                '.comments', '.share-buttons', '.breadcrumb',
-                '.related-articles', '.article-attachments'
+                '.article-meta', '.article-info', '.article-votes', '.comments',
+                '.share-buttons', '.breadcrumb', '.related-articles', 
+                '.article-attachments', '.page-metadata', '.page-actions'
             ]
-            
             for selector in cleanup_selectors:
                 for element in content.select(selector):
                     element.decompose()
@@ -372,9 +471,9 @@ def extrair_conteudo_pagina(url: str) -> str:
             # Fallback estratégico
             body = soup.find('body')
             text = body.get_text(separator=' ', strip=True) if body else soup.get_text(separator=' ', strip=True)
-        
+
         cleaned_text = clean_text(text)
-        return cleaned_text[:10000] if cleaned_text else "Conteúdo não encontrado"  # Aumentado para 10000
+        return cleaned_text[:10000] if cleaned_text else "Conteúdo não encontrado"
         
     except Exception as e:
         return f"Erro na extração: {str(e)}"
@@ -385,14 +484,13 @@ def pesquisar_interna_totvs(query: str, limit: int = 5) -> List[str]:
     cached = cache.get(cache_key)
     if cached:
         return cached
-    
+
     base = "https://centraldeatendimento.totvs.com"
     search_url = f"{base}/hc/pt-br/search?query={urllib.parse.quote(query)}"
-    
     links = []
+    
     try:
         response = fazer_requisicao_inteligente(search_url)
-        
         if response and response.status_code == 200:
             soup = BeautifulSoup(response.content, "html.parser")
             
@@ -412,15 +510,13 @@ def pesquisar_interna_totvs(query: str, limit: int = 5) -> List[str]:
                             href = base + href
                         elif not href.startswith("http"):
                             href = base + "/" + href.lstrip("/")
-                            
+                        
                         if href.startswith(base) and "/articles/" in href and href not in links:
                             links.append(href)
-                            
-                    if len(links) >= limit:
-                        break
+                            if len(links) >= limit:
+                                break
                 if len(links) >= limit:
                     break
-                    
     except Exception as e:
         pass
     
@@ -428,27 +524,35 @@ def pesquisar_interna_totvs(query: str, limit: int = 5) -> List[str]:
     return links
 
 def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
-    """Sistema híbrido de busca com múltiplas fontes"""
+    """Sistema híbrido de busca com múltiplas fontes incluindo TDN"""
     cache_key = f"search_{hash(query)}"
     cached = cache.get(cache_key)
     if cached:
         return cached
-    
+
     cleaned = clean_query(query)
     if not cleaned:
         return []
-    
+
     found = []
     seen = set()
-    
+
     # Estratégia 1: API Zendesk (mais confiável)
     api_links = buscar_via_api_zendesk(cleaned, max_links)
     for url in api_links:
         if url not in seen:
             found.append(url)
             seen.add(url)
-    
-    # Estratégia 2: DuckDuckGo
+
+    # Estratégia 2: TDN (NOVA FUNCIONALIDADE)
+    if len(found) < max_links:
+        tdn_links = buscar_tdn_totvs(cleaned, max_links - len(found))
+        for url in tdn_links:
+            if url not in seen:
+                found.append(url)
+                seen.add(url)
+
+    # Estratégia 3: DuckDuckGo
     if len(found) < max_links:
         try:
             search_query = f"site:centraldeatendimento.totvs.com {cleaned}"
@@ -459,29 +563,30 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
                         "/articles/" in url and url not in seen):
                         found.append(url)
                         seen.add(url)
-                    if len(found) >= max_links:
-                        break
+                        if len(found) >= max_links:
+                            break
         except Exception as e:
             pass
-    
-    # Estratégia 3: Pesquisa interna
+
+    # Estratégia 4: Pesquisa interna
     if len(found) < max_links:
         interna_links = pesquisar_interna_totvs(cleaned, max_links - len(found))
         for url in interna_links:
             if url not in seen:
                 found.append(url)
                 seen.add(url)
-    
+
     # Fallback final
     if not found:
         found = [f"https://centraldeatendimento.totvs.com/hc/pt-br/search?query={urllib.parse.quote(cleaned)}"]
-    
+
     cache.set(cache_key, found)
     return found[:max_links]
 
 # ---------------------------
 # SISTEMA DE RELEVÂNCIA MELHORADO
 # ---------------------------
+
 def pontuar_relevancia(texto: str, query: str) -> float:
     """Sistema de pontuação de relevância melhorado"""
     if not texto or not query:
@@ -510,6 +615,7 @@ def pontuar_relevancia(texto: str, query: str) -> float:
 # ---------------------------
 # SISTEMA IA MELHORADO COM TRATAMENTO DE ERROS
 # ---------------------------
+
 def reclassificar_artigos_ia(artigos: List[Tuple[float, str, str]], query: str, use_gemini: bool, api_key: str, modelo: str) -> List[Tuple[float, str, str]]:
     """Usa IA para reclassificar os artigos por relevância"""
     if not artigos or len(artigos) <= 1:
@@ -519,7 +625,7 @@ def reclassificar_artigos_ia(artigos: List[Tuple[float, str, str]], query: str, 
     cached = cache.get(cache_key)
     if cached:
         return cached
-    
+
     try:
         artigos_info = []
         for score, url, conteudo in artigos:
@@ -563,7 +669,7 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
                 "threshold": "BLOCK_NONE"
             },
             {
-                "category": "HARM_CATEGORY_HATE_SPEECH", 
+                "category": "HARM_CATEGORY_HATE_SPEECH",
                 "threshold": "BLOCK_NONE"
             },
             {
@@ -578,19 +684,19 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
         
         prompt = f"""
         Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
-        
+
         PERGUNTA DO USUÁRIO: {query}
-        
+
         ARTIGOS ENCONTRADOS:
         {artigos_texto}
-        
+
         INSTRUÇÕES:
         1. Analise cada artigo em relação à pergunta
-        2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE  
+        2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE
         3. Retorne APENAS os URLs em ordem de relevância, um por linha
         4. Não inclua explicações, apenas a lista ordenada de URLs
         5. Se não puder determinar a relevância, retorne os URLs na ordem original
-        
+
         URLs ORDENADOS:
         """
         
@@ -617,9 +723,8 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
             for candidate in response.candidates:
                 if candidate.content and candidate.content.parts:
                     return candidate.content.parts[0].text.strip()
-        
-        return ""  # Retorna string vazia em caso de erro
-        
+            return ""  # Retorna string vazia em caso de erro
+            
     except Exception as e:
         st.warning(f"Aviso Gemini: {e}")
         return ""  # Retorna string vazia em caso de erro
@@ -632,12 +737,12 @@ def reclassificar_openai(query: str, artigos_texto: str, model: str, api_key: st
         
         prompt = f"""
         Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
-        
+
         PERGUNTA DO USUÁRIO: {query}
-        
+
         ARTIGOS ENCONTRADOS:
         {artigos_texto}
-        
+
         INSTRUÇÕES:
         1. Analise cada artigo em relação à pergunta
         2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE
@@ -654,6 +759,7 @@ def reclassificar_openai(query: str, artigos_texto: str, model: str, api_key: st
             temperature=0.0,
             max_tokens=500,
         )
+        
         return resp.choices[0].message.content.strip()
     except Exception as e:
         raise Exception(f"Erro OpenAI: {e}")
@@ -693,8 +799,8 @@ def formatar_links_saiba_mais(links: List[str]) -> str:
         return ""
     
     padroes_de_remocao = ["-Cross", "-CROSS", "-RH", "-MP", "-Logística", "-Framework", "-LOG", "-FIN", "-FAT", "-CRM"]
-    
     links_formatados = []
+    
     for link in links:
         link_limpo = link
         for padrao in padroes_de_remocao:
@@ -719,14 +825,13 @@ def formatar_links_saiba_mais(links: List[str]) -> str:
 
 def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, use_gemini: bool, api_key: str, temperatura: float):
     """Função unificada que escolhe entre Gemini e ChatGPT com tratamento robusto"""
-    
     # Filtrar contexto removendo mensagens de erro
     if "erro 403" in context.lower() or "acesso negado" in context.lower():
         context = "Conteúdo não disponível devido a restrições de acesso."
     
     if not context or not context.strip() or context == "Conteúdo não disponível devido a restrições de acesso.":
         return "Não encontrei essa informação na documentação oficial devido a restrições de acesso."
-
+    
     try:
         if use_gemini:
             return get_gemini_response_robusto(query, context, fontes, modelo, api_key, temperatura)
@@ -771,7 +876,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
         # Usar modelo mais estável
         if model not in ["gemini-2.5-flash", "gemini-2.5-pro"]:
             model = "gemini-2.5-flash"
-        
+            
         gemini_model = genai.GenerativeModel(
             model_name=model,
             generation_config=generation_config,
@@ -787,7 +892,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
             "- Forneça respostas RESUMIDA, não corte informações importantes.\n"
             "- NÃO inclua a seção 'Fontes consultadas' no final - isso será adicionado automaticamente.\n"
         )
-
+        
         user_content = (
             f"{system_prompt}\n\n"
             f"PERGUNTA DO USUÁRIO:\n{query}\n\n"
@@ -795,7 +900,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
             "INSTRUÇÃO IMPORTANTE: Forneça uma resposta COMPLETA sem cortes. Se necessário, use parágrafos claros e organizados.\n\n"
             "Fontes disponíveis:\n" + "\n".join(fontes)
         )
-
+        
         response = gemini_model.generate_content([user_content])
         
         # Tratamento robusto da resposta
@@ -828,7 +933,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
         )
         
         user_content = f"PERGUNTA DO USUÁRIO:\n{query}\n\nCONTEÚDO EXTRAÍDO:\n{context}\n\nINSTRUÇÃO: Forneça resposta COMPLETA sem cortes.\n\nFontes disponíveis:\n" + "\n".join(fontes)
-
+        
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -838,6 +943,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
             temperature=temperatura,
             max_tokens=3060,  # AUMENTADO: de 512 para 3060 tokens
         )
+        
         return resp.choices[0].message.content.strip()
     except Exception as e:
         return f"Erro ao gerar resposta com OpenAI: {e}"
@@ -883,12 +989,13 @@ def exibir_resposta_longa(resposta):
 # ---------------------------
 # INTERFACE STREAMLIT MELHORADA
 # ---------------------------
+
 def inicializar_session_state():
     """Inicializa as variáveis de session state"""
     defaults = {
         'min_score': 0.3,
         'use_gemini': True,
-        'modelo': "gemini-2.5-flash", 
+        'modelo': "gemini-2.5-flash",
         'api_key': "",
         'temperatura': 0.1,
         'mostrar_codigo': False,
@@ -911,6 +1018,7 @@ def atualizar_lista_modelos():
         modelos_disponiveis = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
         if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
             st.session_state.modelo = "gpt-4o-mini"
+    
     return modelos_disponiveis
 
 def adicionar_ao_historico(pergunta, resposta):
@@ -937,7 +1045,7 @@ def processar_pergunta(user_query: str):
     cleaned_query = clean_query(user_query)
     if not cleaned_query:
         return "Não foi possível processar a pergunta."
-
+    
     if tem_video_ou_anexo(user_query):
         return "Pergunta contém referência a vídeo ou anexo. Não será feita busca automática na documentação."
     
@@ -959,16 +1067,13 @@ def processar_pergunta(user_query: str):
                 texto = extrair_conteudo_pagina(link)
                 score = pontuar_relevancia(texto, user_query)
                 contexto_scores.append((score, link, texto))
-
+            
             # Reclassificação inteligente por IA
             if st.session_state.reclassificar_ia and len(contexto_scores) > 1:
                 status.write("🧠 Reclassificando artigos por relevância...")
                 contexto_scores = reclassificar_artigos_ia(
-                    contexto_scores, 
-                    user_query, 
-                    st.session_state.use_gemini,
-                    st.session_state.api_key,
-                    st.session_state.modelo
+                    contexto_scores, user_query, st.session_state.use_gemini,
+                    st.session_state.api_key, st.session_state.modelo
                 )
             else:
                 # Ordenação tradicional por score
@@ -986,23 +1091,17 @@ def processar_pergunta(user_query: str):
             elif contexto_scores[0][0] < st.session_state.min_score:
                 resposta_final = "Observação: essa consulta aborda um ponto não detalhado na documentação. A resposta é baseada em conhecimento geral.\n\n"
                 resposta_final += get_ai_response(
-                    user_query, 
-                    contexto_combinado, 
-                    [link for _, link, _ in artigos_relevantes], 
-                    st.session_state.modelo,
-                    st.session_state.use_gemini,
-                    st.session_state.api_key,
-                    st.session_state.temperatura
+                    user_query, contexto_combinado,
+                    [link for _, link, _ in artigos_relevantes],
+                    st.session_state.modelo, st.session_state.use_gemini,
+                    st.session_state.api_key, st.session_state.temperatura
                 )
             else:
                 resposta_final = get_ai_response(
-                    user_query, 
-                    contexto_combinado, 
-                    [link for _, link, _ in artigos_relevantes], 
-                    st.session_state.modelo,
-                    st.session_state.use_gemini,
-                    st.session_state.api_key,
-                    st.session_state.temperatura
+                    user_query, contexto_combinado,
+                    [link for _, link, _ in artigos_relevantes],
+                    st.session_state.modelo, st.session_state.use_gemini,
+                    st.session_state.api_key, st.session_state.temperatura
                 )
             
             # Adicionar seção "Saiba mais" se a resposta for válida
@@ -1021,11 +1120,11 @@ def processar_pergunta(user_query: str):
                 resposta_final += saiba_mais
             
             status.update(label="Processamento completo!", state="complete")
-            
+        
         # Adicionar ao histórico
         adicionar_ao_historico(user_query, resposta_final)
         return resposta_final
-
+        
     except Exception as e:
         return f"Ocorreu um erro durante o processamento: {str(e)}"
 
@@ -1039,8 +1138,7 @@ def main():
         
         # Configurações básicas
         st.session_state.use_gemini = st.checkbox(
-            "Usar Google Gemini", 
-            value=st.session_state.use_gemini,
+            "Usar Google Gemini", value=st.session_state.use_gemini,
             help="Desmarque para usar OpenAI"
         )
         
@@ -1048,10 +1146,8 @@ def main():
         
         # Configurações de performance
         st.subheader("🚀 Performance")
-        
         st.session_state.cache_enabled = st.checkbox(
-            "Ativar Cache", 
-            value=st.session_state.cache_enabled,
+            "Ativar Cache", value=st.session_state.cache_enabled,
             help="Melhora performance armazenando resultados temporariamente"
         )
         
@@ -1060,40 +1156,30 @@ def main():
             st.success("Cache limpo!")
         
         st.session_state.reclassificar_ia = st.checkbox(
-            "Reclassificação por IA", 
-            value=st.session_state.reclassificar_ia,
+            "Reclassificação por IA", value=st.session_state.reclassificar_ia,
             help="Usa IA para ordenar resultados por relevância"
         )
         
         st.session_state.min_score = st.slider(
-            "Score Mínimo de Relevância",
-            min_value=0.0,
-            max_value=1.0,
-            value=st.session_state.min_score,
-            step=0.05,
+            "Score Mínimo de Relevância", min_value=0.0, max_value=1.0,
+            value=st.session_state.min_score, step=0.05,
             help="Valores mais baixos retornam mais resultados"
         )
         
         st.session_state.temperatura = st.slider(
-            "Temperatura da IA",
-            min_value=0.0,
-            max_value=1.0,
-            value=st.session_state.temperatura,
-            step=0.1,
+            "Temperatura da IA", min_value=0.0, max_value=1.0,
+            value=st.session_state.temperatura, step=0.1,
             help="0 = preciso, 1 = criativo"
         )
         
         # Modelo e API
         st.session_state.modelo = st.selectbox(
-            "Modelo de IA",
-            options=modelos_disponiveis,
+            "Modelo de IA", options=modelos_disponiveis,
             index=modelos_disponiveis.index(st.session_state.modelo)
         )
         
         st.session_state.api_key = st.text_input(
-            "Chave da API",
-            value=st.session_state.api_key,
-            type="password",
+            "Chave da API", value=st.session_state.api_key, type="password",
             placeholder="Cole sua chave da API aqui"
         )
         
