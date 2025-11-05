@@ -454,27 +454,31 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
         "https://tdn.totvs.com.br",
     ]
     
-    with DDGS() as ddgs:
-        for r in ddgs.text(search_query, max_results=10):
-            url = r.get("href", "")
+    try:
+        with DDGS() as ddgs:
+            for r in ddgs.text(search_query, max_results=10):
+                url = r.get("href", "")
     
-            if url not in seen and any(url.startswith(dom) for dom in ALLOWED_DOMAINS):
+                if url not in seen and any(url.startswith(dom) for dom in ALLOWED_DOMAINS):
     
-                # CENTRAL (mantém filtro original)
-                if url.startswith("https://centraldeatendimento.totvs.com") \
-                   and "/articles/" in url and "protheus" in url.lower():
-                    found.append(url)
-                    seen.add(url)
+                    # CENTRAL (mantém filtro original)
+                    if (
+                        url.startswith("https://centraldeatendimento.totvs.com")
+                        and "/articles/" in url
+                        and "protheus" in url.lower()
+                    ):
+                        found.append(url)
+                        seen.add(url)
     
-                # TDN (entra sem filtrar "protheus" na URL)
-                elif url.startswith("https://tdn.totvs.com.br"):
-                    found.append(url)
-                    seen.add(url)
+                    # TDN (entra sem filtrar "protheus" na URL)
+                    elif url.startswith("https://tdn.totvs.com.br"):
+                        found.append(url)
+                        seen.add(url)
     
-            if len(found) >= max_links:
-                break
-        except Exception as e:
-            pass
+                if len(found) >= max_links:
+                    break
+    except Exception as e:
+        pass
     
     # Estratégia 3: Pesquisa interna
     if len(found) < max_links:
