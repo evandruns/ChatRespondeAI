@@ -837,7 +837,7 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
                 {"role": "user", "content": user_content},
             ],
             temperature=temperatura,
-            max_tokens=512,
+            max_tokens=1024,
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
@@ -849,11 +849,11 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
 def inicializar_session_state():
     """Inicializa as variáveis de session state"""
     defaults = {
-        'min_score': 0.3,
+        'min_score': 0.5,
         'use_gemini': True,
         'modelo': "gemini-2.5-flash", 
         'api_key': "",
-        'temperatura': 0.1,
+        'temperatura': 0.0,
         'mostrar_codigo': False,
         'reclassificar_ia': True,
         'cache_enabled': True,
