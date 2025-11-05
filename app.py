@@ -595,7 +595,7 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
         """
         
         # Usar modelo mais estável
-        if model not in ["gemini-pro", "gemini-1.5-pro"]:
+        if model not in ["gemini-pro", "gemini-2.5-pro"]:
             model = "gemini-pro"
             
         gemini_model = genai.GenerativeModel(
@@ -769,7 +769,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
         }
         
         # Usar modelo mais estável
-        if model not in ["gemini-pro", "gemini-1.5-pro"]:
+        if model not in ["gemini-pro", "gemini-2.5-pro"]:
             model = "gemini-pro"
         
         gemini_model = genai.GenerativeModel(
@@ -861,7 +861,7 @@ def inicializar_session_state():
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
     if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-pro", "gemini-1.5-pro"]
+        modelos_disponiveis = ["gemini-pro", "gemini-2.5-pro"]
         if st.session_state.modelo not in modelos_disponiveis:
             st.session_state.modelo = "gemini-pro"
     else:
