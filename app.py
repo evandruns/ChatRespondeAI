@@ -486,12 +486,43 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
                 found.append(url)
                 seen.add(url)
     
+    # Estratégia 4: pesquisa interna TDN
+    if len(found) < max_links:
+        tdn_links = pesquisar_interna_tdn(cleaned, max_links - len(found))
+        for url in tdn_links:
+            if url not in seen:
+                found.append(url)
+                seen.add(url)
+    
     # Fallback final
     if not found:
         found = [f"https://centraldeatendimento.totvs.com/hc/pt-br/search?query={urllib.parse.quote(cleaned)}"]
     
     cache.set(cache_key, found)
     return found[:max_links]
+
+def pesquisar_interna_tdn(query: str, limit: int = 5) -> List[str]:
+    base = "https://tdn.totvs.com.br"
+    search_url = f"{base}/hc/pt-br/search?query={urllib.parse.quote(query)}"
+
+    links = []
+    try:
+        response = fazer_requisicao_inteligente(search_url)
+        if response and response.status_code == 200:
+            soup = BeautifulSoup(response.content, "html.parser")
+            for a in soup.select("a[href*='/articles/']"):
+                href = a.get("href", "")
+                if href.startswith("/"):
+                    href = base + href
+                if href not in links:
+                    links.append(href)
+                if len(links) >= limit:
+                    break
+    except:
+        pass
+
+    return links
+
 
 # ---------------------------
 # SISTEMA DE RELEVÂNCIA MELHORADO
