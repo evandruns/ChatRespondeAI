@@ -577,19 +577,17 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
         ]
         
         prompt = f"""
-        Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
-        
-        PERGUNTA DO USUÁRIO: {query}
-        
-        ARTIGOS ENCONTRADOS:
-        {artigos_texto}
-        
-        INSTRUÇÕES:
-        1. Analise cada artigo em relação à pergunta
-        2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE  
-        3. Retorne APENAS os URLs em ordem de relevância, um por linha
-        4. Não inclua explicações, apenas a lista ordenada de URLs
-        5. Se não puder determinar a relevância, retorne os URLs na ordem original
+        Com base no contexto abaixo, forneça uma resposta RESUMIDA sobre: {query}
+
+        Contexto:
+        {context}
+
+        Instruções:
+        - Seja conciso (máximo 150 palavras)
+        - Foque nos pontos principais
+        - Use linguagem técnica clara
+        - Para detalhes completos, o usuário deve consultar os links fornecidos
+        - Se não houver informação suficiente, diga apenas "Não encontrei informações específicas sobre isso"
         
         URLs ORDENADOS:
         """
