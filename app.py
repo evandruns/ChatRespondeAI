@@ -446,39 +446,37 @@ def buscar_documentacao_totvs(query: str, max_links: int = 5) -> List[str]:
         if url not in seen:
             found.append(url)
             seen.add(url)
-    
-    # Estratégia 2: DuckDuckGo
 
-    ALLOWED_DOMAINS = [
-        "https://centraldeatendimento.totvs.com",
-        "https://tdn.totvs.com.br",
-    ]
-    
+    # Estratégia 2: DuckDuckGo
     try:
         with DDGS() as ddgs:
-            for r in ddgs.text(search_query, max_results=10):
-                url = r.get("href", "")
-    
-                if url not in seen and any(url.startswith(dom) for dom in ALLOWED_DOMAINS):
-    
-                    # CENTRAL (mantém filtro original)
-                    if (
-                        url.startswith("https://centraldeatendimento.totvs.com")
-                        and "/articles/" in url
-                        and "protheus" in url.lower()
-                    ):
-                        found.append(url)
-                        seen.add(url)
-    
-                    # TDN (entra sem filtrar "protheus" na URL)
-                    elif url.startswith("https://tdn.totvs.com.br"):
-                        found.append(url)
-                        seen.add(url)
-    
+            for r in ddgs.text(cleaned, max_results=12):
+                url = r.get("href", "").strip()
+
+                if not url:
+                    continue
+
+                if url in seen:
+                    continue
+
+                # CENTRAL (só artigos)
+                if (
+                    url.startswith("https://centraldeatendimento.totvs.com")
+                    and "/articles/" in url
+                ):
+                    found.append(url)
+                    seen.add(url)
+
+                # TDN (entra sempre que bater domínio TDN)
+                elif url.startswith("https://tdn.totvs.com.br"):
+                    found.append(url)
+                    seen.add(url)
+
                 if len(found) >= max_links:
                     break
-    except Exception as e:
+    except Exception:
         pass
+
     
     # Estratégia 3: Pesquisa interna
     if len(found) < max_links:
