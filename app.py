@@ -245,7 +245,7 @@ def clean_query(query: str) -> str:
         return ""
     
     # Remover caracteres especiais mas manter acentos
-    query = re.sub(r'[^\w\sáàâãéèêíïóôõöúçñÁÀÂÃÉÈÊÍÏÓÔÕÖÚÇÑ-]', ' ', query)
+    query = re.sub(r'[^\w\sáàâãéèêíïóôõöúçñÁÀÂãÉÈÊÍÏÓÔÕÖÚÇÑ-]', ' ', query)
     query = query.lower().strip()
     
     # Remover stop words mas manter palavras técnicas
@@ -507,7 +507,7 @@ def pontuar_relevancia(texto: str, query: str) -> float:
     return final_score
 
 # ---------------------------
-# SISTEMA IA MELHORADO
+# SISTEMA IA MELHORADO COM TRATAMENTO DE ERROS
 # ---------------------------
 def reclassificar_artigos_ia(artigos: List[Tuple[float, str, str]], query: str, use_gemini: bool, api_key: str, modelo: str) -> List[Tuple[float, str, str]]:
     """Usa IA para reclassificar os artigos por relevância"""
@@ -550,55 +550,100 @@ def reclassificar_artigos_ia(artigos: List[Tuple[float, str, str]], query: str, 
         return resultado
 
 def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: str) -> str:
-    """Reclassifica artigos usando Gemini"""
-    import google.generativeai as genai
-    genai.configure(api_key=api_key)
-    
-    prompt = f"""
-    Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
-    
-    PERGUNTA DO USUÁRIO: {query}
-    
-    ARTIGOS ENCONTRADOS:
-    {artigos_texto}
-    
-    INSTRUÇÕES:
-    1. Analise cada artigo em relação à pergunta
-    2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE
-    3. Retorne APENAS os URLs em ordem de relevância, um por linha
-    4. Não inclua explicações, apenas a lista ordenada de URLs
-    
-    URLs ORDENADOS:
-    """
-    
+    """Reclassifica artigos usando Gemini com tratamento robusto de erros"""
     try:
-        gemini_model = genai.GenerativeModel(model_name=model)
+        import google.generativeai as genai
+        genai.configure(api_key=api_key)
+        
+        # Configuração de segurança para evitar respostas bloqueadas
+        safety_settings = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH", 
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+            }
+        ]
+        
+        prompt = f"""
+        Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
+        
+        PERGUNTA DO USUÁRIO: {query}
+        
+        ARTIGOS ENCONTRADOS:
+        {artigos_texto}
+        
+        INSTRUÇÕES:
+        1. Analise cada artigo em relação à pergunta
+        2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE  
+        3. Retorne APENAS os URLs em ordem de relevância, um por linha
+        4. Não inclua explicações, apenas a lista ordenada de URLs
+        5. Se não puder determinar a relevância, retorne os URLs na ordem original
+        
+        URLs ORDENADOS:
+        """
+        
+        # Usar modelo mais estável
+        if model not in ["gemini-1.5-flash", "gemini-1.5-pro"]:
+            model = "gemini-1.5-flash"
+            
+        gemini_model = genai.GenerativeModel(
+            model_name=model,
+            safety_settings=safety_settings,
+            generation_config={
+                "temperature": 0.0,
+                "max_output_tokens": 500,
+            }
+        )
+        
         response = gemini_model.generate_content([prompt])
-        return response.text.strip()
+        
+        # Tratamento robusto da resposta
+        if response and response.parts:
+            return response.text.strip()
+        elif response and response.candidates:
+            # Tentar extrair texto dos candidatos
+            for candidate in response.candidates:
+                if candidate.content and candidate.content.parts:
+                    return candidate.content.parts[0].text.strip()
+        
+        return ""  # Retorna string vazia em caso de erro
+        
     except Exception as e:
-        raise Exception(f"Erro Gemini: {e}")
+        st.warning(f"Aviso Gemini: {e}")
+        return ""  # Retorna string vazia em caso de erro
 
 def reclassificar_openai(query: str, artigos_texto: str, model: str, api_key: str) -> str:
     """Reclassifica artigos usando OpenAI"""
-    from openai import OpenAI
-    client = OpenAI(api_key=api_key)
-    
-    prompt = f"""
-    Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
-    
-    PERGUNTA DO USUÁRIO: {query}
-    
-    ARTIGOS ENCONTRADOS:
-    {artigos_texto}
-    
-    INSTRUÇÕES:
-    1. Analise cada artigo em relação à pergunta
-    2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE
-    3. Retorne APENAS os URLs em ordem de relevância, um por linha
-    4. Não inclua explicações, apenas a lista ordenada de URLs
-    """
-    
     try:
+        from openai import OpenAI
+        client = OpenAI(api_key=api_key)
+        
+        prompt = f"""
+        Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
+        
+        PERGUNTA DO USUÁRIO: {query}
+        
+        ARTIGOS ENCONTRADOS:
+        {artigos_texto}
+        
+        INSTRUÇÕES:
+        1. Analise cada artigo em relação à pergunta
+        2. Ordene do MAIS RELEVANTE para o MENOS RELEVANTE
+        3. Retorne APENAS os URLs em ordem de relevância, um por linha
+        4. Não inclua explicações, apenas a lista ordenada de URLs
+        """
+        
         resp = client.chat.completions.create(
             model=model,
             messages=[
@@ -672,7 +717,7 @@ def formatar_links_saiba_mais(links: List[str]) -> str:
     return saiba_mais
 
 def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, use_gemini: bool, api_key: str, temperatura: float):
-    """Função unificada que escolhe entre Gemini e ChatGPT"""
+    """Função unificada que escolhe entre Gemini e ChatGPT com tratamento robusto"""
     
     # Filtrar contexto removendo mensagens de erro
     if "erro 403" in context.lower() or "acesso negado" in context.lower():
@@ -681,27 +726,55 @@ def get_ai_response(query: str, context: str, fontes: List[str], modelo: str, us
     if not context or not context.strip() or context == "Conteúdo não disponível devido a restrições de acesso.":
         return "Não encontrei essa informação na documentação oficial devido a restrições de acesso."
 
-    if use_gemini:
-        return get_gemini_response(query, context, fontes, modelo, api_key, temperatura)
-    else:
-        return get_chatgpt_response(query, context, fontes, modelo, api_key, temperatura)
+    try:
+        if use_gemini:
+            return get_gemini_response_robusto(query, context, fontes, modelo, api_key, temperatura)
+        else:
+            return get_chatgpt_response(query, context, fontes, modelo, api_key, temperatura)
+    except Exception as e:
+        return f"Erro ao processar a resposta: {str(e)}"
 
-def get_gemini_response(query: str, context: str, fontes: List[str], model: str, api_key: str, temperatura: float):
+def get_gemini_response_robusto(query: str, context: str, fontes: List[str], model: str, api_key: str, temperatura: float):
+    """Versão robusta do Gemini com tratamento completo de erros"""
     try:
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        # Configurar generation config com temperatura
+        # Configurações de segurança relaxadas
+        safety_settings = [
+            {
+                "category": "HARM_CATEGORY_HARASSMENT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_HATE_SPEECH",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+                "threshold": "BLOCK_NONE"
+            },
+            {
+                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
+                "threshold": "BLOCK_NONE"
+            }
+        ]
+        
         generation_config = {
-            "temperature": temperatura,
-            "top_p": 0.0,
+            "temperature": min(temperatura, 0.7),  # Limitar temperatura para evitar problemas
+            "top_p": 0.8,
             "top_k": 40,
             "max_output_tokens": 1024,
         }
         
+        # Usar modelo mais estável
+        if model not in ["gemini-1.5-flash", "gemini-1.5-pro"]:
+            model = "gemini-1.5-flash"
+        
         gemini_model = genai.GenerativeModel(
             model_name=model,
-            generation_config=generation_config
+            generation_config=generation_config,
+            safety_settings=safety_settings
         )
         
         system_prompt = (
@@ -720,9 +793,20 @@ def get_gemini_response(query: str, context: str, fontes: List[str], model: str,
         )
 
         response = gemini_model.generate_content([user_content])
-        return response.text.strip()
+        
+        # Tratamento robusto da resposta
+        if response and response.parts:
+            return response.text.strip()
+        elif response and response.candidates:
+            for candidate in response.candidates:
+                if candidate.content and candidate.content.parts:
+                    return candidate.content.parts[0].text.strip()
+        
+        # Fallback se a resposta estiver vazia
+        return "Não foi possível gerar uma resposta para esta consulta."
+        
     except Exception as e:
-        return f"Erro ao gerar resposta com Gemini: {e}"
+        return f"Erro ao processar a solicitação: {str(e)}"
 
 def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str, api_key: str, temperatura: float):
     try:
@@ -758,11 +842,11 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
 def inicializar_session_state():
     """Inicializa as variáveis de session state"""
     defaults = {
-        'min_score': 0.3,  # Score mais baixo para mais resultados
+        'min_score': 0.3,
         'use_gemini': True,
-        'modelo': "gemini-2.5-flash", 
+        'modelo': "gemini-1.5-flash", 
         'api_key': "",
-        'temperatura': 0.1,  # Temperatura mais baixa para precisão
+        'temperatura': 0.1,
         'mostrar_codigo': False,
         'reclassificar_ia': True,
         'cache_enabled': True,
@@ -776,9 +860,9 @@ def inicializar_session_state():
 def atualizar_lista_modelos():
     """Atualiza a lista de modelos baseado na escolha Gemini/OpenAI"""
     if st.session_state.use_gemini:
-        modelos_disponiveis = ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-pro"]
+        modelos_disponiveis = ["gemini-1.5-flash", "gemini-1.5-pro"]
         if st.session_state.modelo not in modelos_disponiveis:
-            st.session_state.modelo = "gemini-2.5-flash"
+            st.session_state.modelo = "gemini-1.5-flash"
     else:
         modelos_disponiveis = ["gpt-4o-mini", "gpt-4o", "gpt-3.5-turbo"]
         if not any(model in st.session_state.modelo for model in ["gpt", "openai"]):
@@ -881,13 +965,15 @@ def processar_pergunta(user_query: str):
             mensagens_erro = [
                 "não foi possível validar essa informação específica",
                 "não encontrei essa informação na documentação oficial",
-                "conteúdo não disponível devido a restrições de acesso"
+                "conteúdo não disponível devido a restrições de acesso",
+                "erro ao processar",
+                "não foi possível gerar"
             ]
             
             resposta_valida = not any(erro in resposta_final.lower() for erro in mensagens_erro)
             
             if resposta_valida and links:
-                saiba_mais = formatar_links_saiba_mais([link for _, link, _ in contexto_scores[:5]])  # Top 5 links
+                saiba_mais = formatar_links_saiba_mais([link for _, link, _ in contexto_scores[:5]])
                 resposta_final += saiba_mais
             
             status.update(label="Processamento completo!", state="complete")
