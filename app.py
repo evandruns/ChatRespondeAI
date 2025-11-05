@@ -556,26 +556,6 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        # Configuração de segurança para evitar respostas bloqueadas
-        safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH", 
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE"
-            }
-        ]
-        
         prompt = f"""
         Analise estes artigos da documentação TOTVS e ordene-os por relevância para a pergunta do usuário.
         
@@ -596,27 +576,21 @@ def reclassificar_gemini(query: str, artigos_texto: str, model: str, api_key: st
         
         # Usar modelo mais estável
         if model not in ["gemini-2.5-flash", "gemini-2.5-pro"]:
-            model = "gemini-pro"
+            model = "gemini-2.5-flash"
             
         gemini_model = genai.GenerativeModel(
             model_name=model,
-            safety_settings=safety_settings,
             generation_config={
                 "temperature": 0.0,
                 "max_output_tokens": 500,
             }
         )
         
-        response = gemini_model.generate_content([prompt])
+        response = gemini_model.generate_content(prompt)
         
         # Tratamento robusto da resposta
-        if response and response.parts:
+        if response and response.text:
             return response.text.strip()
-        elif response and response.candidates:
-            # Tentar extrair texto dos candidatos
-            for candidate in response.candidates:
-                if candidate.content and candidate.content.parts:
-                    return candidate.content.parts[0].text.strip()
         
         return ""  # Retorna string vazia em caso de erro
         
@@ -741,31 +715,11 @@ def get_gemini_response_sintetico(query: str, context: str, fontes: List[str], m
         import google.generativeai as genai
         genai.configure(api_key=api_key)
         
-        # Configurações de segurança relaxadas
-        safety_settings = [
-            {
-                "category": "HARM_CATEGORY_HARASSMENT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_HATE_SPEECH",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-                "threshold": "BLOCK_NONE"
-            },
-            {
-                "category": "HARM_CATEGORY_DANGEROUS_CONTENT",
-                "threshold": "BLOCK_NONE"
-            }
-        ]
-        
         generation_config = {
-            "temperature": min(temperatura, 0.3),  # Baixa temperatura para respostas mais focadas
+            "temperature": min(temperatura, 0.3),
             "top_p": 0.8,
             "top_k": 40,
-            "max_output_tokens": 800,  # Reduzido para respostas mais curtas
+            "max_output_tokens": 1000,
         }
         
         # Usar modelo mais estável
@@ -774,43 +728,35 @@ def get_gemini_response_sintetico(query: str, context: str, fontes: List[str], m
         
         gemini_model = genai.GenerativeModel(
             model_name=model,
-            generation_config=generation_config,
-            safety_settings=safety_settings
+            generation_config=generation_config
         )
         
-        system_prompt = (
-            "Você é um analista de suporte especializado no ERP Protheus da TOTVS.\n"
-            "Forneça respostas SINTÉTICAS e DIRETAS baseadas exclusivamente no contexto fornecido.\n"
-            "\n**DIRETRIZES IMPORTANTES:**\n"
-            "- Seja CONCISO e OBJETIVO (máximo 2-3 parágrafos)\n"
-            "- Destaque apenas os pontos PRINCIPAIS e mais relevantes\n"
-            "- Use tópicos curtos quando aplicável\n"
-            "- Evite detalhes extensos ou explicações muito longas\n"
-            "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\"\n"
-            "- NÃO inclua a seção 'Fontes consultadas' ou 'Saiba mais' - isso será adicionado automaticamente\n"
-            "- ENCERRAR a resposta após o conteúdo principal\n"
-        )
+        prompt = f"""
+        Você é um especialista em ERP Protheus da TOTVS. Forneça uma resposta SINTÉTICA e DIRETA baseada no contexto abaixo.
 
-        user_content = (
-            f"{system_prompt}\n\n"
-            f"PERGUNTA DO USUÁRIO:\n{query}\n\n"
-            f"CONTEÚDO EXTRAÍDO:\n{context}\n\n"
-            "Lembrete: Forneça uma resposta SINTÉTICA com apenas os pontos principais. "
-            "Para detalhes completos, o usuário deve consultar a documentação oficial."
-        )
+        PERGUNTA: {query}
 
-        response = gemini_model.generate_content([user_content])
+        CONTEXTO DA DOCUMENTAÇÃO:
+        {context}
+
+        FORMATO DA RESPOSTA:
+        - Seja conciso (máximo 2-3 parágrafos)
+        - Destaque apenas os pontos principais
+        - Use linguagem técnica mas acessível
+        - Se não encontrar informação suficiente, diga "Não encontrei informações detalhadas sobre isso na documentação"
+        - Não inclua saudações ou despedidas
+        - Foque na informação essencial
+
+        RESPOSTA SINTÉTICA:
+        """
+        
+        response = gemini_model.generate_content(prompt)
         
         # Tratamento robusto da resposta
-        if response and response.parts:
+        if response and response.text:
             return response.text.strip()
-        elif response and response.candidates:
-            for candidate in response.candidates:
-                if candidate.content and candidate.content.parts:
-                    return candidate.content.parts[0].text.strip()
-        
-        # Fallback se a resposta estiver vazia
-        return "Não foi possível gerar uma resposta para esta consulta."
+        else:
+            return "Não foi possível gerar uma resposta para esta consulta."
         
     except Exception as e:
         return f"Erro ao processar a solicitação: {str(e)}"
@@ -821,34 +767,31 @@ def get_chatgpt_response_sintetico(query: str, context: str, fontes: List[str], 
         from openai import OpenAI
         client = OpenAI(api_key=api_key)
         
-        system_prompt = (
-            "Você é um analista de suporte especializado no ERP Protheus da TOTVS.\n"
-            "Forneça respostas SINTÉTICAS e DIRETAS baseadas exclusivamente no contexto fornecido.\n"
-            "\n**DIRETRIZES IMPORTANTES:**\n"
-            "- Seja CONCISO e OBJETIVO (máximo 2-3 parágrafos)\n"
-            "- Destaque apenas os pontos PRINCIPAIS e mais relevantes\n"
-            "- Use tópicos curtos quando aplicável\n"
-            "- Evite detalhes extensos ou explicações muito longas\n"
-            "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\"\n"
-            "- NÃO inclua a seção 'Fontes consultadas' ou 'Saiba mais' - isso será adicionado automaticamente\n"
-            "- ENCERRAR a resposta após o conteúdo principal\n"
-        )
-        
-        user_content = (
-            f"PERGUNTA DO USUÁRIO:\n{query}\n\n"
-            f"CONTEÚDO EXTRAÍDO:\n{context}\n\n"
-            "Lembrete: Forneça uma resposta SINTÉTICA com apenas os pontos principais. "
-            "Para detalhes completos, o usuário deve consultar a documentação oficial."
-        )
+        prompt = f"""
+        Você é um especialista em ERP Protheus da TOTVS. Forneça uma resposta SINTÉTICA e DIRETA baseada no contexto abaixo.
+
+        PERGUNTA: {query}
+
+        CONTEXTO DA DOCUMENTAÇÃO:
+        {context}
+
+        INSTRUÇÕES:
+        - Seja conciso (máximo 2-3 parágrafos)
+        - Destaque apenas os pontos principais
+        - Use linguagem técnica mas acessível
+        - Se não encontrar informação suficiente, diga "Não encontrei informações detalhadas sobre isso na documentação"
+        - Não inclua saudações ou despedidas
+        - Foque na informação essencial
+        """
 
         resp = client.chat.completions.create(
             model=model,
             messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_content},
+                {"role": "system", "content": "Você é um especialista técnico em ERP Protheus da TOTVS. Forneça respostas sintéticas e diretas."},
+                {"role": "user", "content": prompt},
             ],
-            temperature=min(temperatura, 0.3),  # Baixa temperatura para respostas mais focadas
-            max_tokens=600,  # Reduzido para respostas mais curtas
+            temperature=min(temperatura, 0.3),
+            max_tokens=800,
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
