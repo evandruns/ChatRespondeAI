@@ -214,7 +214,7 @@ def extrair_conteudo_via_api(url):
             text = soup.get_text(separator=' ', strip=True)
             
             full_content = f"{title}\n\n{text}"
-            return clean_text(full_content)[:6000]
+            return clean_text(full_content)[:10000]  # Aumentado para 10000 caracteres
             
     except Exception:
         pass
@@ -374,7 +374,7 @@ def extrair_conteudo_pagina(url: str) -> str:
             text = body.get_text(separator=' ', strip=True) if body else soup.get_text(separator=' ', strip=True)
         
         cleaned_text = clean_text(text)
-        return cleaned_text[:6000] if cleaned_text else "Conteúdo não encontrado"
+        return cleaned_text[:10000] if cleaned_text else "Conteúdo não encontrado"  # Aumentado para 10000
         
     except Exception as e:
         return f"Erro na extração: {str(e)}"
@@ -765,7 +765,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
             "temperature": min(temperatura, 0.7),  # Limitar temperatura para evitar problemas
             "top_p": 0.8,
             "top_k": 40,
-            "max_output_tokens": 1024,
+            "max_output_tokens": 2048,  # AUMENTADO: de 1024 para 2048 tokens
         }
         
         # Usar modelo mais estável
@@ -783,6 +783,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
             "Responda de forma técnica, precisa e baseada exclusivamente no contexto fornecido.\n"
             "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\".\n"
             "- Seja objetivo e inclua passos acionáveis quando aplicável.\n"
+            "- Forneça respostas COMPLETAS e DETALHADAS, não corte informações importantes.\n"
             "- NÃO inclua a seção 'Fontes consultadas' no final - isso será adicionado automaticamente.\n"
         )
 
@@ -790,6 +791,7 @@ def get_gemini_response_robusto(query: str, context: str, fontes: List[str], mod
             f"{system_prompt}\n\n"
             f"PERGUNTA DO USUÁRIO:\n{query}\n\n"
             f"CONTEÚDO EXTRAÍDO:\n{context}\n\n"
+            "INSTRUÇÃO IMPORTANTE: Forneça uma resposta COMPLETA sem cortes. Se necessário, use parágrafos claros e organizados.\n\n"
             "Fontes disponíveis:\n" + "\n".join(fontes)
         )
 
@@ -819,10 +821,11 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
             "Responda de forma técnica, precisa e baseada exclusivamente no contexto fornecido.\n"
             "- Se a informação não estiver no contexto, responda apenas: \"Não encontrei essa informação na documentação oficial\".\n"
             "- Seja objetivo e inclua passos acionáveis quando aplicável.\n"
+            "- Forneça respostas COMPLETAS e DETALHADAS, não corte informações importantes.\n"
             "- NÃO inclua a seção 'Fontes consultadas' no final - isso será adicionado automaticamente.\n"
         )
         
-        user_content = f"PERGUNTA DO USUÁRIO:\n{query}\n\nCONTEÚDO EXTRAÍDO:\n{context}\n\nFontes disponíveis:\n" + "\n".join(fontes)
+        user_content = f"PERGUNTA DO USUÁRIO:\n{query}\n\nCONTEÚDO EXTRAÍDO:\n{context}\n\nINSTRUÇÃO: Forneça resposta COMPLETA sem cortes.\n\nFontes disponíveis:\n" + "\n".join(fontes)
 
         resp = client.chat.completions.create(
             model=model,
@@ -831,11 +834,49 @@ def get_chatgpt_response(query: str, context: str, fontes: List[str], model: str
                 {"role": "user", "content": user_content},
             ],
             temperature=temperatura,
-            max_tokens=512,
+            max_tokens=2000,  # AUMENTADO: de 512 para 2000 tokens
         )
         return resp.choices[0].message.content.strip()
     except Exception as e:
         return f"Erro ao gerar resposta com OpenAI: {e}"
+
+def exibir_resposta_longa(resposta):
+    """Exibe respostas longas com melhor formatação"""
+    st.markdown("---")
+    st.subheader("📋 Resposta:")
+    
+    # Dividir a resposta em partes se for muito longa
+    if len(resposta) > 3000:
+        st.info("📄 Resposta longa - use os controles abaixo para navegar")
+        
+        # Dividir por quebras de linha naturais
+        partes = []
+        linhas = resposta.split('\n')
+        parte_atual = ""
+        
+        for linha in linhas:
+            if len(parte_atual + linha) < 2000:  # Parte de ~2000 chars
+                parte_atual += linha + "\n"
+            else:
+                if parte_atual:
+                    partes.append(parte_atual)
+                parte_atual = linha + "\n"
+        
+        if parte_atual:
+            partes.append(parte_atual)
+        
+        # Navegação entre partes
+        if len(partes) > 1:
+            tab_titles = [f"Parte {i+1}" for i in range(len(partes))]
+            tabs = st.tabs(tab_titles)
+            
+            for i, tab in enumerate(tabs):
+                with tab:
+                    st.write(partes[i])
+        else:
+            st.write(resposta)
+    else:
+        st.write(resposta)
 
 # ---------------------------
 # INTERFACE STREAMLIT MELHORADA
@@ -1117,28 +1158,24 @@ def main():
     
     # Exibir resposta se existir
     if 'resposta' in st.session_state and st.session_state.resposta:
-        st.markdown("---")
-        st.subheader("📋 Resposta:")
+        # Use a nova função para exibir respostas longas
+        exibir_resposta_longa(st.session_state.resposta)
         
         # Controles para a resposta
         col_controls1, col_controls2, col_controls3 = st.columns([2, 1, 1])
         
         with col_controls1:
-            # Toggle entre visualização normal e código
             if st.button("📄 Visualizar como Código" if not st.session_state.mostrar_codigo else "📝 Visualizar Normal", 
                         key="toggle_view", use_container_width=True):
                 st.session_state.mostrar_codigo = not st.session_state.mostrar_codigo
                 st.rerun()
         
         with col_controls2:
-            # Botão para copiar (usando st.code que tem cópia nativa)
             if st.button("📋 Copiar Resposta", key="copy_btn", use_container_width=True):
-                # Mostrar a resposta em formato código que permite cópia fácil
                 st.session_state.mostrar_codigo = True
                 st.success("✅ Use Ctrl+C para copiar o texto acima!")
         
         with col_controls3:
-            # Botão para baixar
             if st.button("💾 Baixar", key="download_btn", use_container_width=True):
                 st.download_button(
                     label="📥 Clique para baixar",
@@ -1150,12 +1187,8 @@ def main():
         
         # Exibir a resposta
         if st.session_state.mostrar_codigo:
-            # Modo código - fácil de copiar
             st.code(st.session_state.resposta, language="text", line_numbers=False)
             st.info("💡 **Dica:** Selecione o texto acima e use Ctrl+C para copiar")
-        else:
-            # Modo normal - melhor visualização
-            st.write(st.session_state.resposta)
 
 if __name__ == "__main__":
     main()
